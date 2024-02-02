@@ -62,6 +62,7 @@ class EuroSAT(DatasetBase):
         train, val, test = OxfordPets.subsample_classes(train_, val_, test_, subsample=subsample)
         train_all, _, _ = OxfordPets.subsample_classes(train_, val_, test_, subsample='all')
 
+
         # super().__init__(train_x=train, val=val, test=test, train_u=train_all)
         super().__init__(train_x=train, val=val, test=test)
 

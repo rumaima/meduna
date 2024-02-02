@@ -1,0 +1,5 @@
+output/
+all_weights/
+embeddings/
+clip/__pycache__/
+datasets/__pycache__/

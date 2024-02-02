@@ -1446,6 +1446,57 @@ ds_specific_templates = {
         'art of the {}.',
         'a photo of the large {}.',
         'itap of a {}.',
+    ],
+    'ISIC2018': [ 
+        'a bad photo of the {}.',
+        'a blurred photo of the {} .',
+        'a dark photo {}.',
+        'a photo of the small {}.',
+        'a photo of the vague {}.',
+        'a photo of the large {}.',
+        'a centered photo of a{}.',
+    ],
+
+    'PneumoniaGuangzhou': [ 
+        'a bad photo of the {}.',
+        'a blurred photo of the {} .',
+        'a dark photo {}.',
+        'a photo of the small {}.',
+        'a photo of the vague {}.',
+        'a photo of the large {}.',
+        'a centered photo of a{}.',
+    ],
+
+    'ShenzhenCXR': [ 
+        'a bad photo of the {}.',
+        'a blurred photo of the {} .',
+        'a dark photo {}.',
+        'a photo of the small {}.',
+        'a photo of the vague {}.',
+        'a photo of the large {}.',
+        'a centered photo of a{}.',
+    ],
+
+    'MontgomeryCXR': [
+        'a bad photo of the {}.',
+        'a blurred photo of the {} .',
+        'a dark photo {}.',
+        'a photo of the small {}.',
+        'a photo of the vague {}.',
+        'a photo of the large {}.',
+        'a centered photo of a{}.',
+    ],
+
+    'IDRID': [
+        'a bad photo of the {}.',
+        'a blurred photo of the {} .',
+        'a dark photo {}.',
+        'a photo of the small {}.',
+        'a photo of the vague {}.',
+        'a photo of the large {}.',
+        'a centered photo of a{}.',
     ]
+
+
 
 }

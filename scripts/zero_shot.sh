@@ -1,11 +1,11 @@
 #!/bin/bash
 # custom config
-DATA=data
-TRAINER=LaFTerUFT
-CFG=vit_b32
+DATA="/l/users/umaima.rahman/datasets/"
+TRAINER=LaFTer
+CFG=vit_l14
 dset="$1"
 txt_cls=zero_shot
-CUDA_VISIBLE_DEVICES=1 python LaFter.py \
+CUDA_VISIBLE_DEVICES=0 python /home/umaima.rahman/research/sem6/LaFTer/LaFTer.py \
 --root ${DATA} \
 --trainer ${TRAINER} \
 --dataset-config-file configs/datasets/"${dset}".yaml \

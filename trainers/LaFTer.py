@@ -4,15 +4,16 @@ import os.path as osp
 from dassl.engine import TRAINER_REGISTRY, TrainerX
 from dassl.utils import load_checkpoint
 from dassl.data.data_manager import DataManager
-from clip.simple_tokenizer import SimpleTokenizer as _Tokenizer
-from clip.clip import tokenize
-_tokenizer = _Tokenizer()
+# from clip.simple_tokenizer import SimpleTokenizer as _Tokenizer  # for CLIP
+# from clip.clip import tokenize                                   # for CLIP
+# _tokenizer = _Tokenizer()                                        # for CLIP
 from utils.model_utils import *
 from utils.utils import *
-_tokenizer = _Tokenizer()
 from functools import reduce
 from operator import mul
 from utils.data_utils import ds_specific_templates
+from MedCLIP.medclip import MedCLIPModel, MedCLIPVisionModelViT, MedCLIPTextModel
+from MedCLIP.medclip.dataset import MedCLIPProcessor
 
 def load_clip_to_cpu(cfg):
     backbone_name = cfg.MODEL.BACKBONE.NAME
@@ -34,25 +35,26 @@ def load_clip_to_cpu(cfg):
 
 class LaFTerUFT(nn.Module):
 
-    def __init__(self, model, classes, templates, ds_templates=None, device='cuda', log=None, dataset_name=None, txt_cls=None, cfg=None):
+    def __init__(self, model, classes, templates, ds_templates=None, device='cuda', log=None, dataset_name=None, txt_cls=None, cfg=None, processor=None):
         super(LaFTerUFT, self).__init__()
         self.adapter_pl = None
         self.device = device
         self.cfg = cfg
+        self.processor = processor
         self.dataset_templates = ds_templates
         self.classes = classes
         self.dataset_name = dataset_name
         self.classes = classes
         self.txt_cls = txt_cls
         self.log = log
-        patch_size = (16, 16)
+        patch_size = (16,16)  #(4,4) for vitb16
         self.model = model.to(device)
         self.templates = templates
-        self.backbone_out_size = 512
-        self.hidden_size = 768 # todo for ViT-L use 1024 - for ViT-B use 768
-        self.num_tokens = 50 # todo all experiments are run with num_tokens = 50
+        self.backbone_out_size = 512 # todo for ViT-L use 768 - for ViT-B use 512
+        self.hidden_size = 96 # todo for ViT-L use 1024 - for ViT-B use 768  -- for medclip swin 96
+        self.num_tokens = 199 # todo all experiments are run with num_tokens = 50 b/32 = 257 l/14  -- for medclip swin 113 (224,224), 199 (396,396)
         self.prompt_proj = nn.Identity()
-        self.hidden_size_text = 512
+        self.hidden_size_text = 512 #512 remains the same
         self.num_tokens_text = 77
         prompt_dim = self.hidden_size
         val = math.sqrt(6. / float(3 * reduce(mul, patch_size, 1) + prompt_dim))  # noqa
@@ -63,6 +65,8 @@ class LaFTerUFT(nn.Module):
         nn.init.uniform_(self.prompt_embeddings.data, -val, val)
         self.txt_features_for_text_cls, self.labels_for_text_cls = self.txt_features_for_text_cls()
         self.text_features = self.txt_features()
+        
+        
     def train_txt_clas(self, criteria):
         noise_std = 0.1
         noise = torch.randn(self.txt_features_for_text_cls.shape) * noise_std
@@ -71,6 +75,14 @@ class LaFTerUFT(nn.Module):
         feas = (self.adapter(txt_feas.to(torch.float32) + noise.cuda()))
         loss = criteria(feas, txt_label)
         return loss
+    
+    def test_txt_clas(self, image):
+        noise_std = 0.1
+        noise = torch.randn(self.txt_features_for_text_cls.shape) * noise_std
+        txt_feas = self.image_features(image)
+        txt_label = self.labels_for_text_cls
+        feas = (self.adapter(txt_feas.to(torch.float32)))
+        return feas
 
     def txt_features_for_text_cls(self):
 
@@ -123,9 +135,10 @@ class LaFTerUFT(nn.Module):
                 zeroshot_weights = []
                 with torch.no_grad():
                     for classname in tqdm(desc):
-                        text = tokenize(classname).cuda()  # tokenize # (50, 77) --> 50 templates/texts from GPT
-                        class_embeddings = self.model.encode_text(
-                            text)  # embed with text encoder # (50, 512) --> embeddings for all 50 texts
+                        prompt_texts = [template.format(classname) for template in self.templates]  # format with class
+                        # texts = tokenize(prompt_texts).cuda()  # tokenize # (50, 77) --> 50 templates/texts from GPT for CLIP
+                        texts = self.processor(text=prompt_texts ,return_tensors="pt", padding=True).input_ids.cuda() # tokenize # (50, 77) --> 50 templates/texts from GPT for MedCLIP
+                        class_embeddings = self.model.encode_text(texts)  # embed with text encoder # (50, 512) --> embeddings for all 50 texts
                         class_embeddings /= class_embeddings.norm(dim=-1, keepdim=True)  # L2 norm of the embeddings (dim 2)
                         zeroshot_weights.append(class_embeddings)
                     zeroshot_weights = torch.stack(zeroshot_weights).cuda()  # (512, 10) --> 512 embeddings for 10 classes'
@@ -140,8 +153,9 @@ class LaFTerUFT(nn.Module):
         with torch.no_grad():
             zeroshot_weights = []
             for classname in tqdm(self.classes):
-                texts = [template.format(classname) for template in self.templates]  # format with class
-                texts = tokenize(texts).cuda()  # tokenize
+                prompt_texts = [template.format(classname) for template in self.templates]  # format with class
+                # texts = tokenize(prompt_texts).cuda()  # tokenize for CLIP
+                texts = self.processor(text=prompt_texts ,return_tensors="pt", padding=True).input_ids.cuda() # tokenize for MedCLIP
                 class_embeddings = self.model.encode_text(texts)  # embed with text encoder
                 class_embeddings /= class_embeddings.norm(dim=-1, keepdim=True)
                 class_embedding = class_embeddings.mean(dim=0)
@@ -149,6 +163,7 @@ class LaFTerUFT(nn.Module):
                 zeroshot_weights.append(class_embedding)
             zeroshot_weights = torch.stack(zeroshot_weights, dim=1).cuda()
         return zeroshot_weights
+
 
     def image_features(self, images):
         with torch.no_grad():
@@ -158,8 +173,10 @@ class LaFTerUFT(nn.Module):
 
     def eval_clip(self, x):
         with torch.no_grad():
-            img_features_2 = self.incorporate_prompt(x)
-            img_features_2 = self.embeddings_after_prompts(img_features_2)
+            # img_features_2 = self.incorporate_prompt(x)
+            # img_features_2 = self.embeddings_after_prompts(img_features_2) for clip
+            img_features_2, dimension_size_2 = self.incorporate_prompt(x)
+            img_features_2 = self.embeddings_after_prompts(img_features_2, dimension_size_2)
             img_features_adapter = self.adapter(img_features_2)
         return img_features_adapter
 
@@ -176,8 +193,10 @@ class LaFTerUFT(nn.Module):
         :param x2: the transformed image (for student)
         :return: features adapter (cls head), pseudo-labels
         '''
-        img_features_2 = self.incorporate_prompt(x2)
-        img_features_2 = self.embeddings_after_prompts(img_features_2)
+        # img_features_2 = self.incorporate_prompt(x2)
+        # img_features_2 = self.embeddings_after_prompts(img_features_2) for clip
+        img_features_2, dimension_size_2 = self.incorporate_prompt(x2)
+        img_features_2 = self.embeddings_after_prompts(img_features_2, dimension_size_2)
         img_features_adapter = self.adapter(img_features_2)
         return img_features_adapter
 
@@ -197,22 +216,77 @@ class LaFTerUFT(nn.Module):
 
     def incorporate_prompt(self, x, teacher=False):
         B = x.shape[0]
-        x = self.patch_embeddings(x)  # (batch_size, 1 + n_patches, hidden_dim)
+        # x = self.patch_embeddings(x)  # (batch_size, 1 + n_patches, hidden_dim) ## for clip
+        x, y = self.patch_embeddings(x) # for medclip
+
         x = torch.cat((
             x[:, :1, :],
             self.prompt_dropout(self.prompt_proj(self.prompt_embeddings).expand(B, -1, -1)),
             x[:, 1:, :]
         ), dim=1)
-        return x
+        return x, y # for medclip and only x for clip
 
-    def patch_embeddings(self, x: torch.tensor):
-        return self.model.visual.embeddings_patch(x)
+    def patch_embeddings(self, x: torch.tensor): 
+        # shape of x = torch.Size([50, 3, 224, 224]) for CLIP
+        # breakpoint()
+        # self.model.model(x)
+        embedding_output, input_dimensions = self.model.vision_model.model.embeddings(x) # for MEDCLIP  
+        return embedding_output, input_dimensions
+        # self.model.vision_model.model.embeddings(x)[0].shape  torch.Size([50,3136,96])
+        # return self.model.visual.embeddings_patch(x) # for CLIP torch.Size([50, 50, 768])
 
-    def embeddings_after_prompts(self, x: torch.tensor):
-        return self.model.visual.forward_after_patch_embeddings(x)
+    def embeddings_after_prompts(self, x: torch.tensor, input_dimensions): 
+        
+        bool_masked_pos = None
+        head_mask = None
+        output_attentions = None
+        output_hidden_states = None
+        return_dict = None
+
+        output_attentions = output_attentions if output_attentions is not None else self.model.vision_model.model.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.model.vision_model.model.config.output_hidden_states
+        )
+        # return_dict = return_dict if return_dict is not None else self.model.vision_model.model.config.use_return_dict
+
+        if x is None:
+            raise ValueError("You have to specify pixel_values")
+
+        project = True
+        pooled_output = None
+
+        head_mask = self.model.vision_model.model.get_head_mask(head_mask, len(self.model.vision_model.model.config.depths))
+
+        encoder_outputs = self.model.vision_model.model.encoder(
+            x,
+            (100,100),
+            head_mask=head_mask,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+
+        sequence_output = encoder_outputs[0]
+        sequence_output = self.model.vision_model.model.layernorm(sequence_output)
+
+        
+        if self.model.vision_model.model.pooler is not None:
+            pooled_output = self.model.vision_model.model.pooler(sequence_output.transpose(1, 2))
+            pooled_output = torch.flatten(pooled_output, 1)
+
+        if not return_dict:
+            output = (sequence_output, pooled_output) + encoder_outputs[1:]
+        output_dict = {'last_hidden_state': output[0], 'pooler_output': output[1]}
+        img_embeds = output_dict['pooler_output']
+        if project:
+            img_embeds = self.model.vision_model.projection_head(img_embeds)
+        return img_embeds
+        # shape of x = torch.Size([50, 100, 768]) for CLIP
+        # return self.model.visual.forward_after_patch_embeddings(x)  # for CLIP torch.Size([50, 512])
 
     def positional_embeddings_for_text(self, x: torch.tensor):
-        return self.model.positional_embeddings(x)
+        return self.model.text_model.model.embeddings.position_embeddings(x)
+        # return self.model.positional_embeddings(x) for CLIP 
 
     def embeddings_after_prompts_for_text(self, x: torch.tensor):
         return self.model.embeddings_after_prompting(x)
@@ -228,13 +302,29 @@ class LaFTer(TrainerX):
         cfg = self.cfg
         classnames = self.dm.dataset.classnames
 
-        print(f"Loading CLIP (backbone: {cfg.MODEL.BACKBONE.NAME})")
-        clip_model = load_clip_to_cpu(cfg)
+        # ### Loading CLIP pretrained weights
+        # print(f"Loading CLIP (backbone: {cfg.MODEL.BACKBONE.NAME})")
+        # clip_model = load_clip_to_cpu(cfg)
+        # if cfg.TRAINER.COOP.PREC == "fp32" or cfg.TRAINER.COOP.PREC == "amp":
+        #     clip_model.float()
+        # print("Building ZERO-SHOT-MODEL CLIP")
+        # self.model = LaFTerUFT(model=clip_model, classes=classnames,
+        #                                   templates=['a photo of a {}'], ds_templates = ds_specific_templates[cfg.DATASET.NAME], dataset_name= cfg.DATASET.NAME, txt_cls = cfg.txt_cls, cfg=cfg)
+        
+        ### Loading MedCLIP pretrained weights
+        processor = MedCLIPProcessor()
+        print(f"Loading MedCLIP (backbone: {cfg.MODEL.BACKBONE.NAME})")
+        medclip_model = MedCLIPModel(vision_cls=MedCLIPVisionModelViT)
+        medclip_model.from_pretrained()
+        medclip_model.cpu()
         if cfg.TRAINER.COOP.PREC == "fp32" or cfg.TRAINER.COOP.PREC == "amp":
-            clip_model.float()
-        print("Building ZERO-SHOT-MODEL CLIP")
-        self.model = LaFTerUFT(model=clip_model, classes=classnames,
-                                          templates=['a photo of a {}'], ds_templates = ds_specific_templates[cfg.DATASET.NAME], dataset_name= cfg.DATASET.NAME, txt_cls = cfg.txt_cls, cfg=cfg)
+            medclip_model.float()
+        print("Building ZERO-SHOT-MODEL MEDCLIP")
+        self.model = LaFTerUFT(model=medclip_model, classes=classnames,
+                                          templates=['a photo of a {}'], ds_templates = ds_specific_templates[cfg.DATASET.NAME], 
+                                          dataset_name= cfg.DATASET.NAME, txt_cls = cfg.txt_cls, cfg=cfg,
+                                          processor=processor)
+        
         self.register_model("adapt", self.model)
         device_count = torch.cuda.device_count()
         if device_count > 1:

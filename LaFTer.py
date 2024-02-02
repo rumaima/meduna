@@ -19,6 +19,11 @@ import datasets.imagenet_s
 import datasets.imagenet_a
 import datasets.caltech101
 import datasets.cifar
+import datasets.isic2018
+import datasets.pneumonia_guangzhou
+import datasets.shenzhen_cxr
+import datasets.montgomery_cxr
+import datasets.idrid 
 import trainers.LaFTer as lafter_uft
 from utils.utils import *
 import os
@@ -197,16 +202,19 @@ def test(args, teloader, model):
 def train_txt_cls(args, model):
     optimizer, _, _ = setup_text_training_utils(args, model)
     criteria = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
+    
     for i in tqdm(range(args.txt_epochs)):
         loss = model.train_txt_clas(criteria)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+    print(f"epoch: {i}, loss: ", loss)
     model.txt_cls_init()
 
 def train_lafter(args, model, tr_loader, val_loader):
 
     # first train text classifier
+    print("Training the text classifier")
     train_txt_cls(args, model)
 
     all_acc = list()
@@ -259,6 +267,11 @@ def train_lafter(args, model, tr_loader, val_loader):
         all_acc.append(acc)
     print(f'-------------------------------- Best Accuracy: {max(all_acc)} --------------------------------')
 
+    # print(f'Evaluation: {args.txt_epochs}')
+    # acc = test_prompting(val_loader, model)
+    # print(f'TOP-1 Accuracy: {acc}')
+
+
 def main(args):
     cfg = setup_cfg(args)
     cfg.DATALOADER.TRAIN_X.BATCH_SIZE = args.batch_size
@@ -275,6 +288,7 @@ def main(args):
     print_args(args, cfg)
     if torch.cuda.is_available() and cfg.USE_CUDA:
         torch.backends.cudnn.benchmark = True
+    
     trainer = build_trainer(cfg)
     model = trainer.model
     model.args = args
