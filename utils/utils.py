@@ -129,9 +129,8 @@ def test_prompting(teloader, model):
             inputs = inputs[0]
         with torch.no_grad():
             inputs, labels = inputs.cuda(), labels.cuda()
-            
-            # outputs = model(**inputs)  ## for MedCLIP
-            outputs = model.eval_clip(inputs)  ## for CLIP
+            outputs = model(inputs)  ## for MedCLIP
+            # outputs = model.eval_clip(inputs)  ## for CLIP
             # outputs = model.test_txt_clas(inputs) # to evaluate the performance of text classifier alone
             _, predicted = outputs.max(1)
             losses.append(criterion(outputs, labels).cpu())
@@ -158,11 +157,12 @@ text_cls_epochs = {
     'ImageNetA': 500, # 4k for txt_cls
     'ImageNetSketch': 500, # 4k for txt_cls
     'Caltech101': 500, # 4k for txt_cls
-    'ISIC2018':6000, # 6k for txt_cls
-    'PneumoniaGuangzhou':6000, # 6k for txt_cls
-    'ShenzhenCXR':6000, # 6k for txt_cls
-    'MontgomeryCXR':6000, # 6k for txt_cls
-    'IDRID':6000, # 6k for txt_cls
+
+    'ISIC2018':4000, # 500 for txt_cls
+    'PneumoniaGuangzhou':4000, # 4k for txt_cls
+    'ShenzhenCXR':500, # 4k for txt_cls
+    'MontgomeryCXR':4000, # 4k for txt_cls
+    'IDRID':4000, # 4k for txt_cls
 }
 
 def setup_txt_epochs(args, dataset):
