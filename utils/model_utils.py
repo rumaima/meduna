@@ -55,9 +55,9 @@ def get_random_transform(ndim):
     return transforms.Compose([
         transforms.RandomResizedCrop(ndim, scale=(0.2, 1.)),
         transforms.RandomHorizontalFlip(),
-        # transforms.RandomApply([
-        #     transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)  # not strengthened
-        # ], p=0.8),
+        transforms.RandomApply([
+            transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)  # not strengthened
+        ], p=0.8),
         transforms.RandomGrayscale(p=0.2),
         blur,
         normalize
