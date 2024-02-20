@@ -160,7 +160,7 @@ text_cls_epochs = {
 
     'ISIC2018':4000, # 500 for txt_cls
     'PneumoniaGuangzhou':4000, # 4k for txt_cls
-    'ShenzhenCXR':500, # 4k for txt_cls
+    'ShenzhenCXR':4000, # 4k for txt_cls
     'MontgomeryCXR':4000, # 4k for txt_cls
     'IDRID':4000, # 4k for txt_cls
 }

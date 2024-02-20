@@ -65,22 +65,22 @@ def get_random_transform(ndim):
 
 
 te_transform = transforms.Compose([
-    transforms.Resize(224, interpolation=Image.BICUBIC),
-    transforms.CenterCrop(224),
+    transforms.Resize(396, interpolation=Image.BICUBIC),
+    transforms.CenterCrop(396),
     lambda image: image.convert("RGB"),
     transforms.ToTensor(),
     transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
 ])
 
 transform_default_clip_weakly_aug = transforms.Compose([
-    transforms.Resize(224, interpolation=Image.BICUBIC),
-    transforms.CenterCrop(224),
+    transforms.Resize(396, interpolation=Image.BICUBIC),
+    transforms.CenterCrop(396),
     lambda image: image.convert("RGB"),
     transforms.ToTensor(),
     transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
 ])
 
-tr_transforms = TwoCropsTransform(te_transform, get_random_transform(224))
+tr_transforms = TwoCropsTransform(te_transform, get_random_transform(396))
 
 def gen_labels_with_templates(classes, descriptions):
     desc_ = []

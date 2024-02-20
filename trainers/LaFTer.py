@@ -52,7 +52,7 @@ class LaFTerUFT(nn.Module):
         self.templates = templates
         self.backbone_out_size = 512 # todo for ViT-L use 768 - for ViT-B use 512
         self.hidden_size = 96 # todo for ViT-L use 1024 - for ViT-B use 768  -- for medclip swin 96
-        self.num_tokens = 113 # todo all experiments are run with num_tokens = 50 b/32 = 257 l/14  -- for medclip swin 113 (224,224), 199 (396,396)
+        self.num_tokens = 199 # todo all experiments are run with num_tokens = 50 b/32 = 257 l/14  -- for medclip swin 113 (224,224), 199 (396,396)
         self.prompt_proj = nn.Identity()
         self.hidden_size_text = 512 #512 remains the same
         self.num_tokens_text = 77
@@ -260,7 +260,7 @@ class LaFTerUFT(nn.Module):
 
         encoder_outputs = self.model.vision_model.model.encoder(
             x,
-            (57,57),                                      # (57,57) for 224 and (100,100) for 396
+            (100,100),                                      # (57,57) for 224 and (100,100) for 396
             head_mask=head_mask,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
