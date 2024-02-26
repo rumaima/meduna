@@ -129,8 +129,8 @@ def test_prompting(teloader, model):
             inputs = inputs[0]
         with torch.no_grad():
             inputs, labels = inputs.cuda(), labels.cuda()
-            outputs = model(inputs)  ## for MedCLIP
-            # outputs = model.eval_clip(inputs)  ## for CLIP
+            # outputs = model(inputs)  ## for MedCLIP
+            outputs = model.eval_clip(inputs)  ## for CLIP
             # outputs = model.test_txt_clas(inputs) # to evaluate the performance of text classifier alone
             _, predicted = outputs.max(1)
             losses.append(criterion(outputs, labels).cpu())
