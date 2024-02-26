@@ -5,7 +5,7 @@ TRAINER=LaFTer
 CFG=vit_b32
 dset="$1"
 txt_cls=lafter
-CUDA_VISIBLE_DEVICES=2 python /home/umaima.rahman/research/sem6/LaFTer/LaFTer.py \
+CUDA_VISIBLE_DEVICES=3 python /home/umaima.rahman/research/sem6/LaFTer/LaFTer.py \
 --root ${DATA} \
 --trainer ${TRAINER} \
 --dataset-config-file configs/datasets/"${dset}".yaml \
