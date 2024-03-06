@@ -19,6 +19,26 @@ lafter_datasets = ['DescribableTextures',  'EuroSAT', 'OxfordFlowers', 'SUN397',
                    'ImageNetA', 'CIFAR10_local', 'CIFAR100_local', 'ImageNet', 'Caltech101', 'ISIC2018', 'PneumoniaGuangzhou', 
                    'ShenzhenCXR', 'MontgomeryCXR', 'IDRID']
 
+def kl_loss():
+    return nn.KLDivLoss(reduction="batchmean")
+    
+def cosine_loss():
+    cos = nn.CosineSimilarity(dim=0, eps=1e-6)
+    return cos
+
+def crossentropy():
+    return nn.CrossEntropyLoss()
+
+def lscrossentropy():
+    return LabelSmoothingCrossEntropy()
+
+    
+loss_fn = {
+        'ce': crossentropy, 
+        'kl': kl_loss,
+        'cos': cosine_loss,
+        'lsce': lscrossentropy
+        }
 
 def setup_text_training_utils(args, model):
     model = model.cuda()
@@ -66,7 +86,7 @@ def setup_text_training_utils(args, model):
             optimizer, float(args.epochs))
     else:
         raise NotImplementedError
-
+    # criteria = loss_fn[args.lossfn]()
     criteria = LabelSmoothingCrossEntropy()
     return optimizer, scheduler, criteria
 
@@ -108,20 +128,60 @@ def setup_lafter_training_utils(args, model):
         {'params': [p for n, p in params
                     if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
     ]
-
     optimizer = optim.AdamW(optimizer_grouped_parameters, lr=args.lr, betas=(0.9, 0.999))
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, args.mile_stones, 0.60)
-    criteria = LabelSmoothingCrossEntropy()
+    criteria = loss_fn[args.lossfn]()
+    # criteria = LabelSmoothingCrossEntropy()
+
     return optimizer, scheduler, criteria
+
+# def test_prompting(teloader, model):
+#     model.eval()
+#     batch_time = AverageMeter('Time', ':6.3f')
+#     top1 = AverageMeter('Acc@1', ':6.2f')
+#     one_hot = []
+#     losses = []
+#     criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
+#     end = time.time()
+#     for i, inputs in enumerate(tqdm(teloader)):
+#         labels = inputs['label']
+#         inputs = inputs['img']
+#         if isinstance(inputs, list):
+#             inputs = inputs[0]
+#         with torch.no_grad():
+#             inputs, labels = inputs.cuda(), labels.cuda()
+#             # outputs = model(inputs)  ## for MedCLIP
+#             outputs = model.eval_clip(inputs)  ## for CLIP
+#             # outputs = model.test_txt_clas(inputs) # to evaluate the performance of text classifier alone
+#             _, predicted = outputs.max(1)
+#             losses.append(criterion(outputs, labels).cpu())
+#             one_hot.append(predicted.eq(labels).cpu())
+#         acc1 = one_hot[-1].sum().item() / len(labels)
+#         top1.update(acc1, len(labels))
+#         batch_time.update(time.time() - end)
+#         end = time.time()
+#     model.eval()
+#     return top1.avg * 100
+
+acc_list = []
+acc_pl_list = []
+acc_pl_tl_list = []
 
 def test_prompting(teloader, model):
     model.eval()
     batch_time = AverageMeter('Time', ':6.3f')
     top1 = AverageMeter('Acc@1', ':6.2f')
+    a = AverageMeter('Acc@1', ':6.2f')
+    a_pl = AverageMeter('Acc@1', ':6.2f')
+    a_pl_tl = AverageMeter('Acc@1', ':6.2f')
     one_hot = []
+    one_hot_pl = []
+    one_hot_pl_tl = []
     losses = []
+    
     criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
     end = time.time()
+    label_list = {"label":[],"pseudo_label":[]}
     for i, inputs in enumerate(tqdm(teloader)):
         labels = inputs['label']
         inputs = inputs['img']
@@ -129,16 +189,37 @@ def test_prompting(teloader, model):
             inputs = inputs[0]
         with torch.no_grad():
             inputs, labels = inputs.cuda(), labels.cuda()
-            # outputs = model(inputs)  ## for MedCLIP
-            # outputs = model.eval_clip(inputs)  ## for CLIP
-            outputs = model.test_txt_clas(inputs) # to evaluate the performance of text classifier alone
+            # outputs = model.test_txt_clas(inputs) # to evaluate the performance of text classifier alone
+            pl = model.forward_normal_for_pl(inputs)
+            arg_pl = F.softmax(pl, dim=-1).argmax(dim=1, keepdim=True).flatten().cuda()
+            label_list["label"].append(labels)
+            label_list["pseudo_label"].append(arg_pl)
+            # outputs = model.test_txt_clas(inputs) # to evaluate the performance of text classifier alone
+            outputs = model.eval_clip(inputs)  ## for CLIP
             _, predicted = outputs.max(1)
             losses.append(criterion(outputs, labels).cpu())
+
             one_hot.append(predicted.eq(labels).cpu())
+            one_hot_pl.append(predicted.eq(arg_pl).cpu())
+            one_hot_pl_tl.append(labels.eq(arg_pl).cpu())
+
         acc1 = one_hot[-1].sum().item() / len(labels)
+
+        acc = one_hot[-1].sum().item() / len(labels)
+        acc_pl = one_hot_pl[-1].sum().item() / len(arg_pl)
+        acc_pl_tl = one_hot_pl_tl[-1].sum().item() / len(arg_pl)
+
         top1.update(acc1, len(labels))
+        a_pl.update(acc_pl, len(labels))
+        a_pl_tl.update(acc_pl_tl, len(labels))
         batch_time.update(time.time() - end)
         end = time.time()
+
+    acc_list.append(top1.avg)
+    acc_pl_list.append(a_pl.avg)
+    acc_pl_tl_list.append(a_pl_tl.avg)
+    print("Pred vs TL, Pred vs PL, TL vs PL, i")
+    print(top1.avg, a_pl.avg, a_pl_tl.avg)
     model.eval()
     return top1.avg * 100
 
