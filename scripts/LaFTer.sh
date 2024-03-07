@@ -2,7 +2,7 @@
 # custom config
 DATA="/l/users/umaima.rahman/datasets/"
 TRAINER=LaFTer
-CFG=vit_b32
+CFG=rn_50_64
 dset="$1"
 txt_cls=lafter
 CUDA_VISIBLE_DEVICES=2 python /home/umaima.rahman/research/sem6/LaFTer/LaFTer.py \

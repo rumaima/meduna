@@ -24,6 +24,7 @@ import datasets.pneumonia_guangzhou
 import datasets.shenzhen_cxr
 import datasets.montgomery_cxr
 import datasets.idrid 
+# import trainers.LaFTer_Randinit as lafter_uft
 import trainers.LaFTer as lafter_uft
 from utils.utils import *
 import os
@@ -260,7 +261,6 @@ def test(args, teloader, model):
 def train_txt_cls(args, model):
     optimizer, _, _ = setup_text_training_utils(args, model)
     criteria = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
-    
     for i in tqdm(range(args.txt_epochs)):
         loss = model.train_txt_clas(criteria)
         optimizer.zero_grad()
@@ -272,62 +272,64 @@ def train_txt_cls(args, model):
 def train_lafter(args, model, tr_loader, val_loader):
 
     # first train text classifier
-    print("Training the text classifier")
     train_txt_cls(args, model)
 
-    # all_acc = list()
-    # optimizer, scheduler, criteria = setup_lafter_training_utils(args, model)
-    # batch_time = lossmeter()
-    # data_time = lossmeter()
-    # for epoch in range(args.epochs):
-    #     print(f'Epoch: {epoch}')
-    #     model.eval()
-    #     model.adapter.train()
-    #     end = time.time()
+    #initilize the classifier randomly
+    # model.txt_cls_init()
 
-    #     for i, batch in enumerate((tr_loader)):
-    #         data_time.update(time.time() - end)
-    #         batch_time.update(time.time() - end)
+    all_acc = list()
+    optimizer, scheduler, criteria = setup_lafter_training_utils(args, model)
+    batch_time = lossmeter()
+    data_time = lossmeter()
+    for epoch in range(args.epochs):
+        print(f'Epoch: {epoch}')
+        model.eval()
+        model.adapter.train()
+        end = time.time()
 
-    #         input = batch["img"]
-    #         input = torch.stack(input)  # two views from dataloader
-    #         input = input.to(model.device)
+        for i, batch in enumerate((tr_loader)):
+            data_time.update(time.time() - end)
+            batch_time.update(time.time() - end)
 
-    #         optimizer.zero_grad()
+            input = batch["img"]
+            input = torch.stack(input)  # two views from dataloader
+            input = input.to(model.device)
 
-    #         pl = model.forward_normal_for_pl(input[0])
-    #         out = model.forward_aug_with_prompts(input[1].float().cuda())
+            optimizer.zero_grad()
 
-    #         pseudo_label = F.softmax(pl, dim=-1)  # / 0.04
-    #         pseudo_label = pseudo_label.argmax(dim=1, keepdim=True)
-    #         pseudo_label = pseudo_label.flatten().cuda()
+            pl = model.forward_normal_for_pl(input[0])
+            out = model.forward_aug_with_prompts(input[1].float().cuda())
 
-    #         loss = criteria(out.squeeze(), pseudo_label)
-    #         if i % args.print_freq == 0:
-    #             print(
-    #                 "epoch [{0}/{1}][{2}/{3}]\t"
-    #                 "loss {losses}\t"
-    #                 "lr {lr:.6e}".format(
-    #                     epoch + 1,
-    #                     args.epochs,
-    #                     i + 1,
-    #                     len(tr_loader),
-    #                     losses=loss.item(),
-    #                     lr=optimizer.param_groups[0]["lr"],
-    #                 ))
+            pseudo_label = F.softmax(pl, dim=-1)  # / 0.04
+            pseudo_label = pseudo_label.argmax(dim=1, keepdim=True)
+            pseudo_label = pseudo_label.flatten().cuda()
 
-    #         loss.backward()
-    #         optimizer.step()
-    #     scheduler.step()
-    #     print(f'Evaluation: {epoch}')
-    #     acc = test_prompting(val_loader, model)
-    #     print(f'TOP-1 Accuracy: {acc}')
-    #     all_acc.append(acc)
-    # print(f'-------------------------------- Best Accuracy: {max(all_acc)} --------------------------------')
+            loss = criteria(out.squeeze(), pseudo_label)
+            if i % args.print_freq == 0:
+                print(
+                    "epoch [{0}/{1}][{2}/{3}]\t"
+                    "loss {losses}\t"
+                    "lr {lr:.6e}".format(
+                        epoch + 1,
+                        args.epochs,
+                        i + 1,
+                        len(tr_loader),
+                        losses=loss.item(),
+                        lr=optimizer.param_groups[0]["lr"],
+                    ))
 
-    print(f'Evaluation: {args.txt_epochs}')
-    acc = test_prompting(val_loader, model)
-    print(f'TOP-1 Accuracy: {acc}')
+            loss.backward()
+            optimizer.step()
+        scheduler.step()
+        print(f'Evaluation: {epoch}')
+        acc = test_prompting(val_loader, model)
+        print(f'TOP-1 Accuracy: {acc}')
+        all_acc.append(acc)
+    print(f'-------------------------------- Best Accuracy: {max(all_acc)} --------------------------------')
+
+    # print(f'Evaluation: {args.txt_epochs}')
+    # acc = test_prompting(val_loader, model)
+    # print(f'TOP-1 Accuracy: {acc}')
 
 
 def main(args):

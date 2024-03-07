@@ -49,6 +49,10 @@ def setup_text_training_utils(args, model):
     for key, value in model.named_parameters():
         if 'adapter' in key and 'adapter_pl' not in key:
             value.requires_grad = True
+        elif 'classifier' in key:
+            value.requires_grad = True
+        elif 'deep_classifier' in key:
+            value.requires_grad = True
         else:
             value.requires_grad = False
 
@@ -130,8 +134,8 @@ def setup_lafter_training_utils(args, model):
     ]
     optimizer = optim.AdamW(optimizer_grouped_parameters, lr=args.lr, betas=(0.9, 0.999))
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, args.mile_stones, 0.60)
-    criteria = loss_fn[args.lossfn]()
-    # criteria = LabelSmoothingCrossEntropy()
+    # criteria = loss_fn[args.lossfn]()
+    criteria = LabelSmoothingCrossEntropy()
 
     return optimizer, scheduler, criteria
 

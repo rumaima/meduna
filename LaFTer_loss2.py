@@ -193,7 +193,7 @@ def embedding_similarity(args,cfg, model, teloader, label_mapping):
         prompts_labels_shenzhen =   [0]*65 + [1]*69 
         prompts_labels_montgomery = [0]*65 + [1]*69 
         prompts_labels_idrid      = [0]*110 + [1]*110 + [2]*110 + [3]*110 + [4]*110 
-        prompts_labels = torch.tensor(prompts_labels_shenzhen).cuda()
+        prompts_labels = torch.tensor(prompts_labels_isic2018).cuda()
         # text_label = clip.tokenize(prompt_label)
         # text_inputs = clip.tokenize(desc_all)
         processor = model.processor
@@ -358,7 +358,6 @@ def train_lafter(args, model, tr_loader, val_loader):
             loss = -cr_loss # for cosine similarity
             
             loss = 0.7*cr_loss + 1.5*ent_loss
-            loss = cr_loss
 
             label_list["label"].append(batch["label"])
             label_list["pseudo_label"].append(arg_pl.flatten())
@@ -386,7 +385,7 @@ def train_lafter(args, model, tr_loader, val_loader):
     print(f'-------------------------------- Best Accuracy: {max(all_acc)} --------------------------------')
     # save the lists
     save_path = "/home/umaima.rahman/research/sem6/LaFTer/" 
-    np.savez(os.path.join(save_path,"med_acc_list_shenzhen_cos_.npz"), acc_list, acc_pl_list, acc_pl_tl_list)
+    np.savez(os.path.join(save_path,"med_acc_list_isic_cos_ent.npz"), acc_list, acc_pl_list, acc_pl_tl_list)
     # print(f'Evaluation: {args.txt_epochs}')
     # acc = test_prompting(val_loader, model)
     # print(f'TOP-1 Accuracy: {acc}')
@@ -429,7 +428,7 @@ def main(args):
             4: ['Stage_4_Retinopathy',440, 549]
         }
         # to be changed according to the dataset
-    label_mapping = label_mapping_shenzhen
+    label_mapping = label_mapping_isic2018
 
     if cfg.SEED >= 0:
         print("Setting fixed seed: {}".format(cfg.SEED))
