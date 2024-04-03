@@ -14,7 +14,6 @@ from operator import mul
 from utils.data_utils import ds_specific_templates
 from MedCLIP.medclip import MedCLIPModel, MedCLIPVisionModelViT, MedCLIPTextModel
 from MedCLIP.medclip.dataset import MedCLIPProcessor
-from trainers.mlhc_mlp import *
 
 def load_clip_to_cpu(cfg):
     backbone_name = cfg.MODEL.BACKBONE.NAME

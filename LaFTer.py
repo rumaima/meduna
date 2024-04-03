@@ -370,7 +370,8 @@ def main(args):
             4: ['Stage_4_Retinopathy',440, 549]
         }
         # to be changed according to the dataset
-    label_mapping = label_mapping_isic2018
+    label_mapping = label_mapping_montgomery 
+
 
     if cfg.SEED >= 0:
         print("Setting fixed seed: {}".format(cfg.SEED))

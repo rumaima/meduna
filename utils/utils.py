@@ -139,33 +139,33 @@ def setup_lafter_training_utils(args, model):
 
     return optimizer, scheduler, criteria
 
-# def test_prompting(teloader, model):
-#     model.eval()
-#     batch_time = AverageMeter('Time', ':6.3f')
-#     top1 = AverageMeter('Acc@1', ':6.2f')
-#     one_hot = []
-#     losses = []
-#     criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
-#     end = time.time()
-#     for i, inputs in enumerate(tqdm(teloader)):
-#         labels = inputs['label']
-#         inputs = inputs['img']
-#         if isinstance(inputs, list):
-#             inputs = inputs[0]
-#         with torch.no_grad():
-#             inputs, labels = inputs.cuda(), labels.cuda()
-#             # outputs = model(inputs)  ## for MedCLIP
-#             outputs = model.eval_clip(inputs)  ## for CLIP
-#             # outputs = model.test_txt_clas(inputs) # to evaluate the performance of text classifier alone
-#             _, predicted = outputs.max(1)
-#             losses.append(criterion(outputs, labels).cpu())
-#             one_hot.append(predicted.eq(labels).cpu())
-#         acc1 = one_hot[-1].sum().item() / len(labels)
-#         top1.update(acc1, len(labels))
-#         batch_time.update(time.time() - end)
-#         end = time.time()
-#     model.eval()
-#     return top1.avg * 100
+def test_prompting(teloader, model):
+    model.eval()
+    batch_time = AverageMeter('Time', ':6.3f')
+    top1 = AverageMeter('Acc@1', ':6.2f')
+    one_hot = []
+    losses = []
+    criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
+    end = time.time()
+    for i, inputs in enumerate(tqdm(teloader)):
+        labels = inputs['label']
+        inputs = inputs['img']
+        if isinstance(inputs, list):
+            inputs = inputs[0]
+        with torch.no_grad():
+            inputs, labels = inputs.cuda(), labels.cuda()
+            outputs = model(inputs)  ## for MedCLIP
+            # outputs = model.eval_clip(inputs)  ## for CLIP
+            # outputs = model.test_txt_clas(inputs) # to evaluate the performance of text classifier alone
+            _, predicted = outputs.max(1)
+            losses.append(criterion(outputs, labels).cpu())
+            one_hot.append(predicted.eq(labels).cpu())
+        acc1 = one_hot[-1].sum().item() / len(labels)
+        top1.update(acc1, len(labels))
+        batch_time.update(time.time() - end)
+        end = time.time()
+    model.eval()
+    return top1.avg * 100
 
 def evalauation_mlhc_mlp(teloader, model, model_f, model_t, label_map):
     model.eval()

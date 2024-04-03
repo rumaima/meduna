@@ -265,7 +265,6 @@ def test(args, teloader, model):
 def train_txt_cls(args, model):
     optimizer, _, _ = setup_text_training_utils(args, model)
     criteria = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
-    
     for i in tqdm(range(args.txt_epochs)):
         loss = model.train_txt_clas(criteria)
         optimizer.zero_grad()
@@ -352,12 +351,13 @@ def train_lafter(args, model, tr_loader, val_loader):
             out_ = out_.flatten().cuda()
             pseudo_label = pseudo_label.flatten().cuda()
 
-            cr_loss = criteria(out_, pseudo_label)
+            cr_loss = criteria(out_, pseudo_label.long())
             # lsce_loss = criteria(out.squeeze(), arg_pl_flat)
             # cr_loss = lsce_loss # for label smooth cross entropy
             loss = -cr_loss # for cosine similarity
             
-            loss = 0.7*cr_loss + 1.5*ent_loss
+            # loss = 0.7*cr_loss + 1.5*ent_loss
+            
 
             label_list["label"].append(batch["label"])
             label_list["pseudo_label"].append(arg_pl.flatten())
@@ -385,7 +385,7 @@ def train_lafter(args, model, tr_loader, val_loader):
     print(f'-------------------------------- Best Accuracy: {max(all_acc)} --------------------------------')
     # save the lists
     save_path = "/home/umaima.rahman/research/sem6/LaFTer/" 
-    np.savez(os.path.join(save_path,"med_acc_list_isic_cos_ent.npz"), acc_list, acc_pl_list, acc_pl_tl_list)
+    # np.savez(os.path.join(save_path,"med_acc_list_isic_cos_ent.npz"), acc_list, acc_pl_list, acc_pl_tl_list)
     # print(f'Evaluation: {args.txt_epochs}')
     # acc = test_prompting(val_loader, model)
     # print(f'TOP-1 Accuracy: {acc}')
@@ -428,7 +428,7 @@ def main(args):
             4: ['Stage_4_Retinopathy',440, 549]
         }
         # to be changed according to the dataset
-    label_mapping = label_mapping_isic2018
+    label_mapping = label_mapping_montgomery
 
     if cfg.SEED >= 0:
         print("Setting fixed seed: {}".format(cfg.SEED))
@@ -520,7 +520,7 @@ if __name__ == "__main__":
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--txt_cls', type=str, default='tap', required=True, choices=['cls_only',
                                                                                       'templates_only', 'lafter', 'zero_shot'])
-    parser.add_argument('--batch_size', type=int, default=50)
+    parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--workers', type=int, default=4)
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--epochs', type=int, default=50)
