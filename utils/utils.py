@@ -167,25 +167,16 @@ def setup_lafter_training_utils(args, model):
 #     model.eval()
 #     return top1.avg * 100
 
-acc_list = []
-acc_pl_list = []
-acc_pl_tl_list = []
-
-def test_prompting(teloader, model):
+def evalauation_mlhc_mlp(teloader, model, model_f, model_t, label_map):
     model.eval()
+    model_f.eval()
+    model_t.eval()
     batch_time = AverageMeter('Time', ':6.3f')
     top1 = AverageMeter('Acc@1', ':6.2f')
-    a = AverageMeter('Acc@1', ':6.2f')
-    a_pl = AverageMeter('Acc@1', ':6.2f')
-    a_pl_tl = AverageMeter('Acc@1', ':6.2f')
     one_hot = []
-    one_hot_pl = []
-    one_hot_pl_tl = []
     losses = []
-    
     criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
     end = time.time()
-    label_list = {"label":[],"pseudo_label":[]}
     for i, inputs in enumerate(tqdm(teloader)):
         labels = inputs['label']
         inputs = inputs['img']
@@ -193,39 +184,17 @@ def test_prompting(teloader, model):
             inputs = inputs[0]
         with torch.no_grad():
             inputs, labels = inputs.cuda(), labels.cuda()
-            # outputs = model.test_txt_clas(inputs) # to evaluate the performance of text classifier alone
-            pl = model.forward_normal_for_pl(inputs)
-            arg_pl = F.softmax(pl, dim=-1).argmax(dim=1, keepdim=True).flatten().cuda()
-            label_list["label"].append(labels)
-            label_list["pseudo_label"].append(arg_pl)
-            # outputs = model.test_txt_clas(inputs) # to evaluate the performance of text classifier alone
-            outputs = model.eval_clip(inputs)  ## for CLIP
+            outputs = model.forward_mlhc_mlp(inputs, model_t)  ## for MedCLIP
             _, predicted = outputs.max(1)
             losses.append(criterion(outputs, labels).cpu())
-
             one_hot.append(predicted.eq(labels).cpu())
-            one_hot_pl.append(predicted.eq(arg_pl).cpu())
-            one_hot_pl_tl.append(labels.eq(arg_pl).cpu())
-
         acc1 = one_hot[-1].sum().item() / len(labels)
-
-        acc = one_hot[-1].sum().item() / len(labels)
-        acc_pl = one_hot_pl[-1].sum().item() / len(arg_pl)
-        acc_pl_tl = one_hot_pl_tl[-1].sum().item() / len(arg_pl)
-
         top1.update(acc1, len(labels))
-        a_pl.update(acc_pl, len(labels))
-        a_pl_tl.update(acc_pl_tl, len(labels))
         batch_time.update(time.time() - end)
         end = time.time()
-
-    acc_list.append(top1.avg)
-    acc_pl_list.append(a_pl.avg)
-    acc_pl_tl_list.append(a_pl_tl.avg)
-    print("Pred vs TL, Pred vs PL, TL vs PL, i")
-    print(top1.avg, a_pl.avg, a_pl_tl.avg)
     model.eval()
     return top1.avg * 100
+
 
 text_cls_epochs = {
     'DescribableTextures': 400, # 5.5k for txt_cls

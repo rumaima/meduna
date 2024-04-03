@@ -14,6 +14,7 @@ from operator import mul
 from utils.data_utils import ds_specific_templates
 from MedCLIP.medclip import MedCLIPModel, MedCLIPVisionModelViT, MedCLIPTextModel
 from MedCLIP.medclip.dataset import MedCLIPProcessor
+from trainers.mlhc_mlp import *
 
 def load_clip_to_cpu(cfg):
     backbone_name = cfg.MODEL.BACKBONE.NAME
@@ -204,6 +205,7 @@ class LaFTerUFT(nn.Module):
     def txt_cls_init(self):
         import copy
         self.adapter_pl = copy.deepcopy(self.adapter)
+
     def forward_normal_for_pl(self, x1):
         '''
         :param x1: the clean image (without transforms, for pseudo labels, for teacher)
@@ -214,6 +216,22 @@ class LaFTerUFT(nn.Module):
             img_features_1 = self.image_features(x1)
             pseudo_label = self.adapter_pl(img_features_1.float()).detach()
         return pseudo_label
+
+    def forward_normal_no_prompts(self, x1):
+        '''
+        :param x1: the clean image (without transforms, for pseudo labels, for teacher)
+        :param x2: the transformed image (for student)
+        :return: features adapter (cls head), pseudo-labels
+        '''
+        with torch.no_grad():
+            img_features_1 = self.image_features(x1)
+        return img_features_1
+
+    def forward_mlhc_mlp(self,x, model_t):
+        with torch.no_grad():
+            img_features_1 = self.image_features(x)
+            pseudo_label_softmax = model_t(img_features_1)
+            return pseudo_label_softmax
 
     def incorporate_prompt(self, x, teacher=False):
         B = x.shape[0]
