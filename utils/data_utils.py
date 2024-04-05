@@ -1447,6 +1447,18 @@ ds_specific_templates = {
         'a photo of the large {}.',
         'itap of a {}.',
     ],
+
+
+    'IDRID': [
+        'a bad photo of the {}.',
+        'a blurred photo of the {} .',
+        'a dark photo {}.',
+        'a photo of the small {}.',
+        'a photo of the vague {}.',
+        'a photo of the large {}.',
+        'a centered photo of a{}.',
+    ],
+
     'ISIC2018': [ 
         'a bad photo of the {}.',
         'a blurred photo of the {} .',
@@ -1487,7 +1499,7 @@ ds_specific_templates = {
         'a centered photo of a{}.',
     ],
 
-    'IDRID': [
+    'Covid': [
         'a bad photo of the {}.',
         'a blurred photo of the {} .',
         'a dark photo {}.',
@@ -1496,6 +1508,8 @@ ds_specific_templates = {
         'a photo of the large {}.',
         'a centered photo of a{}.',
     ]
+
+    
 
 
 

@@ -65,6 +65,8 @@ class LaFTerUFT(nn.Module):
         nn.init.uniform_(self.prompt_embeddings.data, -val, val)
         self.txt_features_for_text_cls, self.labels_for_text_cls = self.txt_features_for_text_cls()
         self.text_features = self.txt_features()
+        self.classifier = nn.Sequential(nn.Linear(16, len(classes), bias=False)).to(device)
+        self.adapter = nn.Sequential(nn.Linear(int(self.backbone_out_size), len(classes), bias=False)).to(device) 
     
         
         
@@ -187,6 +189,14 @@ class LaFTerUFT(nn.Module):
             img_features = self.image_features(x)
             pseudo_label = img_features @ self.text_features
         return pseudo_label
+
+    def forward_normal_evaluate_no_prompts(self,x, model_t):
+        # Load the adapter weights
+        img_features_1 = self.image_features(x)
+        transformer_embed = model_t(img_features_1)
+        pseudo_label = self.classifier(transformer_embed.float()).detach()
+        pseudo_label_softmax = F.softmax(pseudo_label, dim=-1)
+        return pseudo_label_softmax
 
     def forward_aug_with_prompts(self, x2):
         '''

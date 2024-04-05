@@ -17,7 +17,7 @@ from pathlib import Path
 
 lafter_datasets = ['DescribableTextures',  'EuroSAT', 'OxfordFlowers', 'SUN397', 'UCF101', 'ImageNetR', 'ImageNetSketch',
                    'ImageNetA', 'CIFAR10_local', 'CIFAR100_local', 'ImageNet', 'Caltech101', 'ISIC2018', 'PneumoniaGuangzhou', 
-                   'ShenzhenCXR', 'MontgomeryCXR', 'IDRID']
+                   'ShenzhenCXR', 'MontgomeryCXR', 'IDRID', 'Covid']
 
 def kl_loss():
     return nn.KLDivLoss(reduction="batchmean")
@@ -94,7 +94,7 @@ def setup_text_training_utils(args, model):
     criteria = LabelSmoothingCrossEntropy()
     return optimizer, scheduler, criteria
 
-def setup_lafter_training_utils(args, model):
+def setup_lafter_training_utils(args, model, model_t, model_g):
     model = model.cuda()
     model = model.float()
     params = list()
@@ -102,6 +102,8 @@ def setup_lafter_training_utils(args, model):
         if key == 'prompt_embeddings':
             value.requires_grad = True
         elif 'adapter' in key and 'adapter_pl' not in key:
+            value.requires_grad = True
+        elif 'classifier' in key:
             value.requires_grad = True
         elif 'projector' in key and not args.entropy:
             value.requires_grad = True
@@ -124,6 +126,20 @@ def setup_lafter_training_utils(args, model):
             params.append((key, value))
     print('----------------------------------------------------------')
 
+    print('------------------ Learnable Parameters for transformer------------------')
+    for key, value in model_t.named_parameters():
+        if value.requires_grad:
+            print("\t{}, {}, {}".format(key, value.numel(), value.shape))
+            params.append((key, value))
+    print('----------------------------------------------------------')
+
+    # print('------------------ Learnable Parameters for mlp ------------------')
+    # for key, value in model_g.named_parameters():
+    #     if value.requires_grad:
+    #         print("\t{}, {}, {}".format(key, value.numel(), value.shape))
+    #         params.append((key, value))
+    # print('----------------------------------------------------------')
+
     no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
     optimizer_grouped_parameters = [
         {'params': [p for n, p in params
@@ -132,39 +148,87 @@ def setup_lafter_training_utils(args, model):
         {'params': [p for n, p in params
                     if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
     ]
-    optimizer = optim.AdamW(optimizer_grouped_parameters, lr=args.lr, betas=(0.9, 0.999))
+    # optimizer = optim.AdamW(optimizer_grouped_parameters, lr=args.lr, betas=(0.9, 0.999))
+    optimizer = optim.SGD(optimizer_grouped_parameters, lr=args.lr)
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, args.mile_stones, 0.60)
     # criteria = loss_fn[args.lossfn]()
     criteria = LabelSmoothingCrossEntropy()
 
     return optimizer, scheduler, criteria
 
-def test_prompting(teloader, model):
+
+def test_prompting(teloader, model, model_t):
+    model.eval()
+    batch_time = AverageMeter('Time', ':6.3f')
+    top1 = AverageMeter('Acc@1', ':6.2f')
+    a = AverageMeter('Acc@1', ':6.2f')
+    a_pl = AverageMeter('Acc@1', ':6.2f')
+    a_pl_tl = AverageMeter('Acc@1', ':6.2f')
+    one_hot = []
+    one_hot_pl = []
+    one_hot_pl_tl = []
+    losses = []
+    pl_list = []
+    acc_list = []
+
+    criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
+    end = time.time()
+    label_list = {"label":[],"pseudo_label":[]}
+    for i, inputs in enumerate(tqdm(teloader)):
+        img_inputs = inputs['img']
+        lbl_inputs = inputs['label']
+        if isinstance(inputs, list):
+            img_inputs = img_inputs[0]
+        with torch.no_grad():
+            img_inputs, lbl_inputs = img_inputs.cuda(), lbl_inputs.cuda()
+            pl = model.forward_normal_evaluate_no_prompts(img_inputs, model_t)
+            _, predicted = pl.max(1)
+            losses.append(criterion(pl, lbl_inputs).cpu())
+            one_hot.append(predicted.eq(lbl_inputs).cpu())
+        acc = one_hot[-1].sum().item() / len(lbl_inputs)
+
+        top1.update(acc, len(lbl_inputs))
+        batch_time.update(time.time() - end)
+        end = time.time()
+    
+    acc_list.append(top1.avg)
+    print(top1.avg)
+    model.eval()
+    return top1.avg * 100
+
+
+def evaluation_no_prompts(dataloader,model, model_t):
     model.eval()
     batch_time = AverageMeter('Time', ':6.3f')
     top1 = AverageMeter('Acc@1', ':6.2f')
     one_hot = []
-    losses = []
+    losses= []
     criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
     end = time.time()
-    for i, inputs in enumerate(tqdm(teloader)):
+
+    # test accuracy
+    for i, inputs in enumerate(tqdm(dataloader)):
         labels = inputs['label']
         inputs = inputs['img']
         if isinstance(inputs, list):
             inputs = inputs[0]
         with torch.no_grad():
             inputs, labels = inputs.cuda(), labels.cuda()
-            outputs = model(inputs)  ## for MedCLIP
+            E_outputs = model.forward_normal_no_prompts(inputs)  ## for MedCLIP
+            Z_outputs = model_t(E_outputs)
+            Y_outputs = model.classifier(Z_outputs)
+            Y_pl = F.softmax(Y_outputs)
             # outputs = model.eval_clip(inputs)  ## for CLIP
             # outputs = model.test_txt_clas(inputs) # to evaluate the performance of text classifier alone
-            _, predicted = outputs.max(1)
-            losses.append(criterion(outputs, labels).cpu())
+            _, predicted = Y_pl.max(1)
+            losses.append(criterion(Y_pl, labels).cpu())
             one_hot.append(predicted.eq(labels).cpu())
         acc1 = one_hot[-1].sum().item() / len(labels)
         top1.update(acc1, len(labels))
         batch_time.update(time.time() - end)
         end = time.time()
     model.eval()
+
     return top1.avg * 100
 
 def evalauation_mlhc_mlp(teloader, model, model_f, model_t, label_map):
@@ -212,11 +276,14 @@ text_cls_epochs = {
     'ImageNetSketch': 500, # 4k for txt_cls
     'Caltech101': 500, # 4k for txt_cls
 
+    'IDRID':4000, # 4k for txt_cls
     'ISIC2018':4000, # 500 for txt_cls
     'PneumoniaGuangzhou':4000, # 4k for txt_cls
     'ShenzhenCXR':4000, # 4k for txt_cls
     'MontgomeryCXR':4000, # 4k for txt_cls
-    'IDRID':4000, # 4k for txt_cls
+    'Covid':4000
+    
+
 }
 
 def setup_txt_epochs(args, dataset):

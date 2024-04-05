@@ -5,7 +5,8 @@ import os.path as osp
 
 from .tools import mkdir_if_missing
 
-__all__ = ["Logger", "setup_logger"]
+__all__ = ["Logger", "setup_logger", "setup_loguru"]
+from loguru import logger
 
 
 class Logger:
@@ -70,4 +71,23 @@ def setup_logger(output=None):
         # make sure the existing log file is not over-written
         fpath += time.strftime("-%Y-%m-%d-%H-%M-%S")
 
+
     sys.stdout = Logger(fpath)
+
+def setup_loguru(output=None, logspec=None):
+    if output is None:
+        return
+
+    if output.endswith(".txt") or output.endswith(".log"):
+        fpath = output
+    else:
+        fpath = osp.join(output, "log.txt")
+
+    if osp.exists(fpath):
+        # make sure the existing log file is not over-written
+        fpath += time.strftime("-%Y-%m-%d-%H-%M-%S")
+    if logspec is not None:
+        logger.add(fpath+logspec+'LOGURU.log', rotation="500 MB")  
+    else:
+        logger.add(fpath+'LOGURU.log', rotation="500 MB")  
+
