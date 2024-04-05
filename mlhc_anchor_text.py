@@ -212,11 +212,11 @@ def test(args, teloader, model):
 
 
         
-def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name):
+def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name, TE):
     all_acc_test = list()
     all_acc_train = list()
     all_acc_val = list()
-
+    logit_scale = 100
     # Create the MLP g
     mlp_input_size = 512
     mlp_hidden_size1 = 256
@@ -226,27 +226,34 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name):
     model_g = model_g.to(model.device)
 
     # Create a transformer model
-    input_size = 512  # Input embedding size
-    hidden_size = 256
-    num_attention_heads = 8
-    num_hidden_layers = 8
-    output_size = 16  # Output size for binary classification
+    t1_input_size = 512  # Input embedding size
+    t1_hidden_size = 256
+    num_attention_heads = 2
+    num_hidden_layers = 2
+    t1_output_size = 128  # Output size for binary classification
 
-    # Create the model
-    model_t = TransformerClassifier(input_size, hidden_size, num_attention_heads, num_hidden_layers, output_size)
-    model_t = model_t.to(model.device)
-     
+    t2_input_size = 128
+    t2_hidden_size = 256
+    t2_output_size = 512
 
-    optimizer, scheduler, criteria = setup_lafter_training_utils(args, model, model_t, model_g)
+    # Create the first transformer model
+    model_t1 = TransformerClassifier(t1_input_size, t1_hidden_size, num_attention_heads, num_hidden_layers, t1_output_size)
+    model_t1 = model_t1.to(model.device)
+    
+    # Create the second transformer model
+    model_t2 = TransformerClassifier(t2_input_size, t2_hidden_size, num_attention_heads, num_hidden_layers, t2_output_size)
+    model_t2 = model_t2.to(model.device)
+
+    optimizer, scheduler, criteria = setup_lafter_training_utils(args, model, model_t1, model_t2, model_g)
     batch_time = lossmeter()
     data_time = lossmeter()
     
     best_acc = 0.0
 
     print(f'-------------------Accuracies before training-----------------------')
-    train_acc = evaluation_no_prompts(tr_loader,model, model_t)
-    val_acc = evaluation_no_prompts(val_loader,model, model_t)
-    test_acc = evaluation_no_prompts(test_loader,model, model_t)
+    train_acc = evaluation_two_transformers(tr_loader,model, model_t1, model_t2, logit_scale, TE)
+    val_acc = evaluation_two_transformers(val_loader,model, model_t1, model_t2, logit_scale, TE)
+    test_acc = evaluation_two_transformers(test_loader,model, model_t1, model_t2, logit_scale, TE)
     
     train_acc = np.round(train_acc,2)
     val_acc = np.round(val_acc,2)
@@ -256,7 +263,7 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name):
     print(f'TOP-1 test Accuracy: {test_acc}')
     logger.info(f"\t -1\t{train_acc}\t{val_acc}\t{test_acc}")
 
-
+    
     model_save_path = "/l/users/umaima.rahman/research/sem6/lafter_checkpoints"
     for epoch in range(args.epochs):
         print(f'Epoch: {epoch}')
@@ -282,11 +289,14 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name):
             m = len(input_image_batch)
            
             num_classes = 2
-
-
-            E = model.forward_normal_no_prompts(input_image_batch)
-            Z = model_t(E)
-            Y = model.classifier(Z)
+            
+            # obtain image embeddings from image encoder E
+            VE = model.image_features(input_image_batch)
+            # transform the image embeddings using a transformer to obtain Z
+            Z1 = model_t1(VE)
+            Z2 = model_t2(Z1)
+            Y = logit_scale * Z2.cuda() @ TE
+            # Y = model.classifier(Z) instead of classifier we use the above expression
             Y = F.softmax(Y)
 
             Y_true = nn.functional.one_hot(input_label_batch, 2).cuda()
@@ -295,7 +305,7 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name):
             comb = int(0.5*m*(m-1))
             loss_comp = torch.zeros((comb,1))
             vk = 0
-            
+            Z = Z1
             for vi in range(m):
                 zi = Z[vi]
                 yhat_i = Y[vi]
@@ -337,9 +347,9 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name):
         
         # Evaluation on validation set for model selection
         print(f'Evaluating on the val set: {epoch}')
-        train_acc = evaluation_no_prompts(tr_loader,model, model_t)
-        val_acc = evaluation_no_prompts(val_loader,model, model_t)
-        test_acc = evaluation_no_prompts(test_loader,model, model_t)
+        train_acc = evaluation_two_transformers(tr_loader,model, model_t1, model_t2, logit_scale, TE)
+        val_acc = evaluation_two_transformers(val_loader,model, model_t1, model_t2, logit_scale, TE)
+        test_acc = evaluation_two_transformers(test_loader,model, model_t1, model_t2, logit_scale, TE)
     
         train_acc = np.round(train_acc,2)
         val_acc = np.round(val_acc,2)
@@ -350,7 +360,8 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name):
             best_acc = val_acc
             checkpoint = {
                 "model": model.state_dict(),
-                "model_t":model_t.state_dict(),
+                "model_t1":model_t1.state_dict(),
+                "model_t2":model_t2.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "epoch": epoch,
             }
@@ -358,7 +369,7 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name):
             print(f'Saving model for epoch: {epoch}')
             print(f'TOP-1 validation Accuracy: {val_acc}')
 
-            torch.save(checkpoint, os.path.join(model_save_path, f"mlhc_anchor_model_best_{args.logspec}_{dataset_name}.pth"))
+            torch.save(checkpoint, os.path.join(model_save_path, f"mlhc_anchor_model_best_two_transforms_{args.logspec}_{dataset_name}.pth"))
             
         print(f'Dataset:{dataset_name}')
         print(f'TOP-1 train Accuracy: {train_acc}')
@@ -388,39 +399,23 @@ def main(args):
 
     dataset_name = cfg.DATASET.NAME
     setup_txt_epochs(args, dataset_name)
+    text_template = []
 
-    label_mapping_isic2018 = {
-            0: ['MEL', 0, 50],
-            1: ['DF',51, 100],
-            2: ['BCC',101, 152],
-            3: ['BKL',153, 202],
-            4: ['AKIEC',203, 252],
-            5: ['NV',253, 307],
-            6: ['VASC',308, 359]
+    label_map_pneumonia = {
+            0: 'HEALTHY',
+            1: 'PNEUMONIA'
         }
-    label_mapping_pneumonia = {
-            0: ['NORMAL', 0, 77],
-            1: ['PNEUMONIA',78, 151],
+    label_map_shenzhen = {
+            0: 'HEALTHY',
+            1: 'TUBERCULOSIS'
         }
-    label_mapping_shenzhen = {
-            0: ['NORMAL', 0, 64],
-            1: ['TB',65, 133],
-        }
-    label_mapping_montgomery = {
-            0: ['NORMAL', 0, 64],
-            1: ['TB',65, 133],
-        }
-    label_mapping_idrid = {
-            0: ['Normal', 0, 109],
-            1: ['Stage_1_Retinopathy',110, 219],
-            2: ['Stage_2_Retinopathy',220, 329],
-            3: ['Stage_3_Retinopathy',330, 439],
-            4: ['Stage_4_Retinopathy',440, 549]
+    label_map_montgomery = {
+            0: 'HEALTHY',
+            1: 'TUBERCULOSIS'
         }
         # to be changed according to the dataset
-    label_mapping = label_mapping_pneumonia
-
-
+    label_mapping = label_map_shenzhen
+    
     if cfg.SEED >= 0:
         print("Setting fixed seed: {}".format(cfg.SEED))
         set_random_seed(cfg.SEED)
@@ -436,12 +431,15 @@ def main(args):
     test_loader = trainer.test_loader
     train_loader = trainer.train_loader_x
 
+    class_name = [label_mapping[c] for c in label_mapping.keys()]
+    texts = [f'a photo of a {class_value} chest x ray' for class_value in class_name]
+    E_t = model.textual_features(class_name)
 
     if args.zero_shot:
         zero_shot(model, test_loader)
     else:
         print(f'Dataset:{dataset_name}')
-        train_mlhc(args, model, train_loader, val_loader, test_loader, dataset_name)
+        train_mlhc(args, model, train_loader, val_loader, test_loader, dataset_name, E_t)
         # test_mlhc(args, model, train_loader, test_loader, dataset_name, model_clip, model_g, model_t)
         # train_lafter(args, model,train_loader, test_loader)
         # alignment_score = embedding_similarity(args, cfg, model, test_loader, label_mapping)

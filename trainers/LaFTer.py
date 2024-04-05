@@ -66,7 +66,6 @@ class LaFTerUFT(nn.Module):
         self.txt_features_for_text_cls, self.labels_for_text_cls = self.txt_features_for_text_cls()
         self.text_features = self.txt_features()
         self.classifier = nn.Sequential(nn.Linear(16, len(classes), bias=False)).to(device)
-        self.adapter = nn.Sequential(nn.Linear(int(self.backbone_out_size), len(classes), bias=False)).to(device) 
     
         
         
@@ -174,6 +173,21 @@ class LaFTerUFT(nn.Module):
             image_features /= image_features.norm(dim=-1, keepdim=True)
             return image_features
 
+    def textual_features(self, classes):
+        with torch.no_grad():
+            zeroshot_weights = []
+            for classname in tqdm(classes):
+                prompt_texts = [template.format(classname) for template in self.templates]  # format with class
+                # texts = tokenize(prompt_texts).cuda()  # tokenize for CLIP
+                texts = self.processor(text=prompt_texts ,return_tensors="pt", padding=True).input_ids.cuda() # tokenize for MedCLIP
+                class_embeddings = self.model.encode_text(texts)  # embed with text encoder
+                class_embeddings /= class_embeddings.norm(dim=-1, keepdim=True)
+                class_embedding = class_embeddings.mean(dim=0)
+                class_embedding /= class_embedding.norm()
+                zeroshot_weights.append(class_embedding)
+            zeroshot_weights = torch.stack(zeroshot_weights, dim=1).cuda()
+            return zeroshot_weights
+
     def eval_clip(self, x):
         with torch.no_grad():
             # img_features_2 = self.incorporate_prompt(x)
@@ -226,15 +240,15 @@ class LaFTerUFT(nn.Module):
             pseudo_label = self.adapter_pl(img_features_1.float()).detach()
         return pseudo_label
 
-    def forward_normal_no_prompts(self, x1):
+    def forward_normal_no_prompts(self, x):
         '''
         :param x1: the clean image (without transforms, for pseudo labels, for teacher)
         :param x2: the transformed image (for student)
         :return: features adapter (cls head), pseudo-labels
         '''
         with torch.no_grad():
-            img_features_1 = self.image_features(x1)
-        return img_features_1
+            img_features = self.image_features(x)
+        return img_features
 
     def forward_mlhc_mlp(self,x, model_t):
         with torch.no_grad():
@@ -349,7 +363,7 @@ class LaFTer(TrainerX):
             medclip_model.float()
         print("Building ZERO-SHOT-MODEL MEDCLIP")
         self.model = LaFTerUFT(model=medclip_model, classes=classnames,
-                                          templates=['a photo of a {}'], ds_templates = ds_specific_templates[cfg.DATASET.NAME], 
+                                          templates=['a photo of a {} chest x_ray'], ds_templates = ds_specific_templates[cfg.DATASET.NAME], 
                                           dataset_name= cfg.DATASET.NAME, txt_cls = cfg.txt_cls, cfg=cfg,
                                           processor=processor)
         

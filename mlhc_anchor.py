@@ -292,27 +292,32 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name):
             Y_true = nn.functional.one_hot(input_label_batch, 2).cuda()
             Y_true = Y_true.to(torch.float32)
 
-            comb = int(0.5*m*(m-1))
-            loss_comp = torch.zeros((comb,1))
-            vk = 0
+            # comb = int(0.5*m*(m-1))
+            # loss_comp = torch.zeros((comb,1))
+            # vk = 0
             
-            for vi in range(m):
-                zi = Z[vi]
-                yhat_i = Y[vi]
-                yi = Y_true[vi]
-                for vj in range(vi+1,m):
-                    zj = Z[vj]
-                    yhat_j = Y[vj]
-                    yj = Y_true[vj]
-                    # norm_y = torch.linalg.norm(yi-yj)
-                    norm_z = torch.log(torch.linalg.norm(zi-zj) + 1e-6)
-                    Ismall = ((yi.T@yj)*norm_z).to(torch.float32).cuda()
-                    Ilarge = ((1-yi.T@yj)*norm_z).to(torch.float32).cuda()
-                    clus_dist =  Ismall - Ilarge
-                    ent = -args.lambda1*(yi.T@torch.log(yhat_i) + yj.T@torch.log(yhat_j))
-                    loss_comp[vk] =  clus_dist + ent
-                    vk += 1
+            # for vi in range(m):
+            #     zi = Z[vi]
+            #     yhat_i = Y[vi]
+            #     yi = Y_true[vi]
+            #     for vj in range(vi+1,m):
+            #         zj = Z[vj]
+            #         yhat_j = Y[vj]
+            #         yj = Y_true[vj]
+            #         # norm_y = torch.linalg.norm(yi-yj)
+            #         norm_z = torch.log(torch.linalg.norm(zi-zj) + 1e-6)
+            #         Ismall = ((yi.T@yj)*norm_z).to(torch.float32).cuda()
+            #         Ilarge = ((1-yi.T@yj)*norm_z).to(torch.float32).cuda()
+            #         clus_dist =  Ismall - Ilarge
+            #         ent = -args.lambda1*(yi.T@torch.log(yhat_i) + yj.T@torch.log(yhat_j))
+            #         loss_comp[vk] =  clus_dist + ent
+            #         vk += 1
 
+            # loss = loss_comp.mean()
+
+            # only using entropy for the loss
+            loss_comp = -Y_true.mT@torch.log(Y)
+            
             loss = loss_comp.mean()
             optimizer.zero_grad()
             
@@ -358,7 +363,7 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name):
             print(f'Saving model for epoch: {epoch}')
             print(f'TOP-1 validation Accuracy: {val_acc}')
 
-            torch.save(checkpoint, os.path.join(model_save_path, f"mlhc_anchor_model_best_{args.logspec}_{dataset_name}.pth"))
+            torch.save(checkpoint, os.path.join(model_save_path, f"mlhc_ent_model_best_{args.logspec}_{dataset_name}.pth"))
             
         print(f'Dataset:{dataset_name}')
         print(f'TOP-1 train Accuracy: {train_acc}')
