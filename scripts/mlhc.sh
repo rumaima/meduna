@@ -11,8 +11,8 @@ CUDA_VISIBLE_DEVICES=1 python /home/umaima.rahman/research/sem6/LaFTer/mlhc_cros
 --dataset-config-file configs/datasets/"${dset}".yaml \
 --config-file configs/trainers/text_cls/${CFG}.yaml \
 --output-dir output/${TRAINER}/${CFG}/"${dset}" \
---lr 0.01 \
+--lr 1e-3 \
 --epochs 100 \
---lambda1 1e-3 \
+--lambda1 1e1 \
 --txt_cls ${txt_cls} \
 --logspec "split_60_SGD_"
