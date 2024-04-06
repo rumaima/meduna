@@ -254,14 +254,26 @@ def main(args):
        
         model_path = model_path_montgomery
         print(f'Dataset:{dataset_name}')
-        # other_train_acc = evaluate_other_datasets(args, train_loader, model_path, model, model_t)
-        # other_val_acc = evaluate_other_datasets(args, val_loader, model_path, model, model_t)
-        # other_test_acc = evaluate_other_datasets(args, test_loader,model_path, model, model_t)
-        # print(f'TOP-1 train Accuracy: {other_train_acc}')
-        # print(f'TOP-1 val Accuracy: {other_val_acc}')
-        # print(f'TOP-1 test Accuracy: {other_test_acc}')
+        other_train_acc = evaluate_other_datasets(args, train_loader, model_path, model, model_t)
+        other_val_acc = evaluate_other_datasets(args, val_loader, model_path, model, model_t)
+        other_test_acc = evaluate_other_datasets(args, test_loader,model_path, model, model_t)
+        len_train_loader = len(train_loader)
+        len_val_loader = len(val_loader)
+        len_test_loader = len(test_loader)
+        total_len_data = len_train_loader + len_val_loader + len_test_loader
+        print('-------------------TOP-1 Accuracy----------------------')
+        print(f'TOP-1 train Accuracy: {other_train_acc}')
+        print(f'TOP-1 val Accuracy: {other_val_acc}')
+        print(f'TOP-1 test Accuracy: {other_test_acc}')
 
-    evaluate_dumb(test_loader)
+        print('--------------------------------------------------------')
+        weighted_accuracy = len_train_loader * other_train_acc + len_val_loader * other_val_acc + len_test_loader * other_test_acc 
+        weighted_accuracy = weighted_accuracy/total_len_data
+        print(f'Weighted accuracy for dataset: {dataset_name} is {weighted_accuracy}')
+
+
+
+    # evaluate_dumb(test_loader)
         
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

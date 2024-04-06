@@ -20,18 +20,16 @@ import datasets.imagenet_a
 import datasets.caltech101
 import datasets.cifar
 import datasets.isic2018
-import datasets.idrid 
+import datasets.idrid
 import datasets.pneumonia_guangzhou
 import datasets.shenzhen_cxr
-import datasets.montgomery_cxr
-import datasets.covid 
-# import trainers.LaFTer_Randinit as lafter_uft
+import datasets.montgomery_cxr 
+import datasets.covid
 import trainers.LaFTer as lafter_uft
 from utils.utils import *
 import os
-import json
-import clip
 
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 def print_args(args, cfg):
     print("***************")
@@ -168,62 +166,6 @@ class lossmeter:
         else:
             self.avg = self.sum / self.count
 
-def embedding_similarity(args,cfg, model, teloader, label_mapping):
-    num_samples = 0
-    alignment = []
-    
-    for i, (inputs) in enumerate(tqdm(teloader)):
-        img = inputs["img"]
-        labels = inputs["label"]
-        num_samples += img.shape[0]
-        
-        # Create a new list based on the mapping
-        classes = [label_mapping[int(num)] for num in labels] 
-        class_name  = classes[0][0]
-
-        path_to_file = f'./descriptions/generic/{cfg.DATASET.NAME}.json'
-        with open(path_to_file) as f:
-            gpt3_prompts = json.load(f)
-        
-        desc = [gpt3_prompts[class_name] for class_name in gpt3_prompts.keys()] # desc is a 2d list, (5,5)
-        # breakpoint()
-        desc_all = [item for sublist in desc for item in sublist]
-        prompt_label = "a photo of a " + class_name
-        prompts_labels = [0]*50 + [1]*51 + [2]*52 + [3]*50 + [4]*50 + [5]*55 + [6]*52 
-        prompts_labels = torch.tensor(prompts_labels).cuda()
-        # text_label = clip.tokenize(prompt_label)
-        # text_inputs = clip.tokenize(desc_all)
-
-        if args.zero_shot:
-            pass
-        else:
-            with torch.no_grad():
-                inputs, labels, descriptions = img.cuda(), labels.cuda(), text_inputs.cuda()
-                # inpits.shape: torch.Size([B, 3, 224, 224]), labels.shape: torch.Size([1]), descriptions.shape: torch.Size([110, 77])
-                img_feature = model.model.encode_image(inputs)
-                # img_feature.shape: torch.Size([B, 768])
-                txt_feature = model.model.encode_text(descriptions)
-                # txt_feature.shape: torch.Size([550, 768])
-
-                image_features = img_feature / img_feature.norm(dim=1, keepdim=True)
-                text_features = txt_feature / txt_feature.norm(dim=1, keepdim=True)
-                # cosine similarity as logits
-                logit_scale = 100
-                
-                similarity_prompt = (logit_scale * image_features @ text_features.t())
-                values, indices = similarity_prompt[0].topk(5)
-                print(values)
-                print(indices)
-
-                top_k_labels = prompts_labels[indices]
-                if labels in top_k_labels:
-                    alignment.append(1)
-                else:
-                    alignment.append(0)
-
-            alignment_score = sum(1 for item in alignment if item == 1)/len(alignment)
-
-    return alignment_score
 
 def test(args, teloader, model):
     model.eval()
@@ -267,16 +209,12 @@ def train_txt_cls(args, model):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-    print(f"epoch: {i}, loss: ", loss)
     model.txt_cls_init()
 
-def train_lafter(args, model, tr_loader, val_loader):
+def train_lafter(args, model, tr_loader, val_loader, dataset_name):
 
     # first train text classifier
     train_txt_cls(args, model)
-
-    #initilize the classifier randomly
-    # model.txt_cls_init()
 
     all_acc = list()
     optimizer, scheduler, criteria = setup_lafter_training_utils(args, model)
@@ -326,12 +264,8 @@ def train_lafter(args, model, tr_loader, val_loader):
         acc = test_prompting(val_loader, model)
         print(f'TOP-1 Accuracy: {acc}')
         all_acc.append(acc)
+    print(f"Lafter Original pipleine for dataset: {dataset_name}")
     print(f'-------------------------------- Best Accuracy: {max(all_acc)} --------------------------------')
-
-    # print(f'Evaluation: {args.txt_epochs}')
-    # acc = test_prompting(val_loader, model)
-    # print(f'TOP-1 Accuracy: {acc}')
-
 
 def main(args):
     cfg = setup_cfg(args)
@@ -342,38 +276,6 @@ def main(args):
     dataset_name = cfg.DATASET.NAME
     setup_txt_epochs(args, dataset_name)
 
-    label_mapping_isic2018 = {
-            0: ['MEL', 0, 50],
-            1: ['DF',51, 100],
-            2: ['BCC',101, 152],
-            3: ['BKL',153, 202],
-            4: ['AKIEC',203, 252],
-            5: ['NV',253, 307],
-            6: ['VASC',308, 359]
-        }
-    label_mapping_pneumonia = {
-            0: ['NORMAL', 0, 77],
-            1: ['PNEUMONIA',78, 151],
-        }
-    label_mapping_shenzhen = {
-            0: ['NORMAL', 0, 64],
-            1: ['TB',65, 133],
-        }
-    label_mapping_montgomery = {
-            0: ['NORMAL', 0, 64],
-            1: ['TB',65, 133],
-        }
-    label_mapping_idrid = {
-            0: ['Normal', 0, 109],
-            1: ['Stage_1_Retinopathy',110, 219],
-            2: ['Stage_2_Retinopathy',220, 329],
-            3: ['Stage_3_Retinopathy',330, 439],
-            4: ['Stage_4_Retinopathy',440, 549]
-        }
-        # to be changed according to the dataset
-    label_mapping = label_mapping_montgomery 
-
-
     if cfg.SEED >= 0:
         print("Setting fixed seed: {}".format(cfg.SEED))
         set_random_seed(cfg.SEED)
@@ -381,7 +283,6 @@ def main(args):
     print_args(args, cfg)
     if torch.cuda.is_available() and cfg.USE_CUDA:
         torch.backends.cudnn.benchmark = True
-    
     trainer = build_trainer(cfg)
     model = trainer.model
     model.args = args
@@ -391,9 +292,7 @@ def main(args):
     if args.zero_shot:
         zero_shot(model, test_loader)
     else:
-        train_lafter(args, model,train_loader, test_loader)
-        alignment_score = embedding_similarity(args, cfg, model, test_loader, label_mapping)
-        print(f"\nAlignment score:\n {alignment_score:.2f}")
+        train_lafter(args, model,train_loader, test_loader, dataset_name)
 
 
 if __name__ == "__main__":
@@ -474,4 +373,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
     args.mile_stones = None
     main(args)
-

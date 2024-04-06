@@ -94,7 +94,7 @@ def setup_text_training_utils(args, model):
     criteria = LabelSmoothingCrossEntropy()
     return optimizer, scheduler, criteria
 
-def setup_lafter_training_utils(args, model, model_t1, model_g):
+def setup_lafter_training_utils(args, model):
     model = model.cuda()
     model = model.float()
     params = list()
@@ -126,12 +126,12 @@ def setup_lafter_training_utils(args, model, model_t1, model_g):
             params.append((key, value))
     print('----------------------------------------------------------')
 
-    print('------------------ Learnable Parameters for transformer 1------------------')
-    for key, value in model_t1.named_parameters():
-        if value.requires_grad:
-            print("\t{}, {}, {}".format(key, value.numel(), value.shape))
-            params.append((key, value))
-    print('----------------------------------------------------------')
+    # print('------------------ Learnable Parameters for transformer 1------------------')
+    # for key, value in model_t1.named_parameters():
+    #     if value.requires_grad:
+    #         print("\t{}, {}, {}".format(key, value.numel(), value.shape))
+    #         params.append((key, value))
+    # print('----------------------------------------------------------')
 
     # print('------------------ Learnable Parameters for transformer 2------------------')
     # for key, value in model_t2.named_parameters():
@@ -155,16 +155,42 @@ def setup_lafter_training_utils(args, model, model_t1, model_g):
         {'params': [p for n, p in params
                     if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
     ]
-    # optimizer = optim.AdamW(optimizer_grouped_parameters, lr=args.lr, betas=(0.9, 0.999))
-    optimizer = optim.SGD(optimizer_grouped_parameters, lr=args.lr)
+    optimizer = optim.AdamW(optimizer_grouped_parameters, lr=args.lr, betas=(0.9, 0.999))
+    # optimizer = optim.SGD(optimizer_grouped_parameters, lr=args.lr)
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, args.mile_stones, 0.60)
     # criteria = loss_fn[args.lossfn]()
     criteria = LabelSmoothingCrossEntropy()
 
     return optimizer, scheduler, criteria
 
+def test_prompting(teloader, model):
+    model.eval()
+    batch_time = AverageMeter('Time', ':6.3f')
+    top1 = AverageMeter('Acc@1', ':6.2f')
+    one_hot = []
+    losses = []
+    criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
+    end = time.time()
+    for i, inputs in enumerate(tqdm(teloader)):
+        labels = inputs['label']
+        inputs = inputs['img']
+        if isinstance(inputs, list):
+            inputs = inputs[0]
+        with torch.no_grad():
+            inputs, labels = inputs.cuda(), labels.cuda()
+            outputs = model.eval_clip(inputs)
+            _, predicted = outputs.max(1)
+            losses.append(criterion(outputs, labels).cpu())
+            one_hot.append(predicted.eq(labels).cpu())
+        acc1 = one_hot[-1].sum().item() / len(labels)
+        top1.update(acc1, len(labels))
+        batch_time.update(time.time() - end)
+        end = time.time()
+    model.eval()
+    return top1.avg * 100
 
-def test_prompting(teloader, model, model_t):
+
+def test_prompting_ent(teloader, model):
     model.eval()
     batch_time = AverageMeter('Time', ':6.3f')
     top1 = AverageMeter('Acc@1', ':6.2f')
@@ -188,9 +214,12 @@ def test_prompting(teloader, model, model_t):
             img_inputs = img_inputs[0]
         with torch.no_grad():
             img_inputs, lbl_inputs = img_inputs.cuda(), lbl_inputs.cuda()
-            pl = model.forward_normal_evaluate_no_prompts(img_inputs, model_t)
-            _, predicted = pl.max(1)
-            losses.append(criterion(pl, lbl_inputs).cpu())
+            # pl = model.forward_normal_for_pl(img_inputs)
+            # pseudo_label = F.softmax(pl, dim=-1)
+            # _, predicted = pseudo_label.max(1)
+            outputs = model.eval_clip(img_inputs)
+            _, predicted = outputs.max(1)
+            losses.append(criterion(outputs, lbl_inputs).cpu())
             one_hot.append(predicted.eq(lbl_inputs).cpu())
         acc = one_hot[-1].sum().item() / len(lbl_inputs)
 

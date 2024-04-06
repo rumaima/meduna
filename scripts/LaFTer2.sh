@@ -13,4 +13,4 @@ CUDA_VISIBLE_DEVICES=1 python /home/umaima.rahman/research/sem6/LaFTer/LaFTer_lo
 --output-dir output/${TRAINER}/${CFG}/"${dset}" \
 --lr 0.0005 \
 --txt_cls ${txt_cls} \
---lossfn cos \
+--lossfn ce \

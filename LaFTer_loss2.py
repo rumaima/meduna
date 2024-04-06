@@ -20,17 +20,19 @@ import datasets.imagenet_a
 import datasets.caltech101
 import datasets.cifar
 import datasets.isic2018
+import datasets.idrid
 import datasets.pneumonia_guangzhou
 import datasets.shenzhen_cxr
-import datasets.montgomery_cxr
-import datasets.idrid 
+import datasets.montgomery_cxr 
+import datasets.covid
 import trainers.LaFTer as lafter_uft
 from utils.utils import *
 import os
 import json
 import clip
-from medclip import MedCLIPModel, MedCLIPVisionModelViT
-from medclip import MedCLIPProcessor
+
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 def print_args(args, cfg):
     print("***************")
@@ -349,14 +351,14 @@ def train_lafter(args, model, tr_loader, val_loader):
             # disbale the next two lines and change loss, compare with softmax out 
             out_ = F.softmax(out, dim=-1) 
             out_ = out_.flatten().cuda()
+            
             pseudo_label = pseudo_label.flatten().cuda()
-
-            cr_loss = criteria(out_, pseudo_label.long())
+            cr_loss = criteria(out_, pseudo_label)
             # lsce_loss = criteria(out.squeeze(), arg_pl_flat)
             # cr_loss = lsce_loss # for label smooth cross entropy
-            loss = -cr_loss # for cosine similarity
+            # loss = -cr_loss # for cosine similarity
             
-            # loss = 0.7*cr_loss + 1.5*ent_loss
+            loss = 0.7*cr_loss + 1.5*ent_loss
             
 
             label_list["label"].append(batch["label"])
@@ -379,7 +381,7 @@ def train_lafter(args, model, tr_loader, val_loader):
             optimizer.step()
         scheduler.step()
         print(f'Evaluation: {epoch}')
-        acc = test_prompting(val_loader, model)
+        acc = test_prompting_ent(val_loader, model)
         print(f'TOP-1 Accuracy: {acc}')
         all_acc.append(acc)
     print(f'-------------------------------- Best Accuracy: {max(all_acc)} --------------------------------')
@@ -520,7 +522,7 @@ if __name__ == "__main__":
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--txt_cls', type=str, default='tap', required=True, choices=['cls_only',
                                                                                       'templates_only', 'lafter', 'zero_shot'])
-    parser.add_argument('--batch_size', type=int, default=1)
+    parser.add_argument('--batch_size', type=int, default=50)
     parser.add_argument('--workers', type=int, default=4)
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--epochs', type=int, default=50)
