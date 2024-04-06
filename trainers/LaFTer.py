@@ -66,7 +66,7 @@ class LaFTerUFT(nn.Module):
         self.txt_features_for_text_cls, self.labels_for_text_cls = self.txt_features_for_text_cls()
         self.text_features = self.txt_features()
         self.classifier = nn.Sequential(nn.Linear(16, len(classes), bias=False)).to(device)
-    
+        # self.dim_reduction = nn.Sequential(nn.Linear(512, 16, bias=False)).to(device)
         
         
     def train_txt_clas(self, criteria):

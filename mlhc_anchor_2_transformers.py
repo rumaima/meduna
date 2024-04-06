@@ -226,26 +226,34 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name, TE
     model_g = model_g.to(model.device)
 
     # Create a transformer model
-    input_size = 512  # Input embedding size
-    hidden_size = 256
+    t1_input_size = 512  # Input embedding size
+    t1_hidden_size = 256
     num_attention_heads = 2
     num_hidden_layers = 2
-    output_size = 16  # Output size for binary classification
+    t1_output_size = 128  # Output size for binary classification
+
+    t2_input_size = 128
+    t2_hidden_size = 256
+    t2_output_size = 512
 
     # Create the first transformer model
-    model_t = TransformerClassifier(input_size, hidden_size, num_attention_heads, num_hidden_layers, output_size)
-    model_t = model_t.to(model.device)
+    model_t1 = TransformerClassifier(t1_input_size, t1_hidden_size, num_attention_heads, num_hidden_layers, t1_output_size)
+    model_t1 = model_t1.to(model.device)
+    
+    # Create the second transformer model
+    model_t2 = TransformerClassifier(t2_input_size, t2_hidden_size, num_attention_heads, num_hidden_layers, t2_output_size)
+    model_t2 = model_t2.to(model.device)
 
-    optimizer, scheduler, criteria = setup_lafter_training_utils(args, model, model_t, model_g)
+    optimizer, scheduler, criteria = setup_lafter_training_utils(args, model, model_t1, model_t2, model_g)
     batch_time = lossmeter()
     data_time = lossmeter()
     
     best_acc = 0.0
 
     print(f'-------------------Accuracies before training-----------------------')
-    train_acc = evaluation_image_text(tr_loader,model, model_t, logit_scale, TE)
-    val_acc = evaluation_image_text(val_loader,model, model_t, logit_scale, TE)
-    test_acc = evaluation_image_text(test_loader,model, model_t, logit_scale, TE)
+    train_acc = evaluation_two_transformers(tr_loader,model, model_t1, model_t2, logit_scale, TE)
+    val_acc = evaluation_two_transformers(val_loader,model, model_t1, model_t2, logit_scale, TE)
+    test_acc = evaluation_two_transformers(test_loader,model, model_t1, model_t2, logit_scale, TE)
     
     train_acc = np.round(train_acc,2)
     val_acc = np.round(val_acc,2)
@@ -281,14 +289,13 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name, TE
             m = len(input_image_batch)
            
             num_classes = 2
-            breakpoint()
+            
             # obtain image embeddings from image encoder E
             VE = model.image_features(input_image_batch)
             # transform the image embeddings using a transformer to obtain Z
-            Z = model_t(VE)
-            # reduce the text embedding dimensionality from (512,c) to (16,c)
-            W = model.dim_reduction(TE)
-            Y = logit_scale * Z.cuda() @ W
+            Z1 = model_t1(VE)
+            Z2 = model_t2(Z1)
+            Y = logit_scale * Z2.cuda() @ TE
             # Y = model.classifier(Z) instead of classifier we use the above expression
             Y = F.softmax(Y)
 
@@ -298,7 +305,7 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name, TE
             comb = int(0.5*m*(m-1))
             loss_comp = torch.zeros((comb,1))
             vk = 0
-    
+            Z = Z1
             for vi in range(m):
                 zi = Z[vi]
                 yhat_i = Y[vi]
@@ -340,9 +347,9 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name, TE
         
         # Evaluation on validation set for model selection
         print(f'Evaluating on the val set: {epoch}')
-        train_acc = evaluation_image_text(tr_loader,model, model_t, logit_scale, TE)
-        val_acc = evaluation_image_text(val_loader,model, model_t, logit_scale, TE)
-        test_acc = evaluation_image_text(test_loader,model, model_t, logit_scale, TE)
+        train_acc = evaluation_two_transformers(tr_loader,model, model_t1, model_t2, logit_scale, TE)
+        val_acc = evaluation_two_transformers(val_loader,model, model_t1, model_t2, logit_scale, TE)
+        test_acc = evaluation_two_transformers(test_loader,model, model_t1, model_t2, logit_scale, TE)
     
         train_acc = np.round(train_acc,2)
         val_acc = np.round(val_acc,2)
@@ -353,7 +360,8 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name, TE
             best_acc = val_acc
             checkpoint = {
                 "model": model.state_dict(),
-                "model_t":model_t.state_dict(),
+                "model_t1":model_t1.state_dict(),
+                "model_t2":model_t2.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "epoch": epoch,
             }
@@ -361,7 +369,7 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name, TE
             print(f'Saving model for epoch: {epoch}')
             print(f'TOP-1 validation Accuracy: {val_acc}')
 
-            torch.save(checkpoint, os.path.join(model_save_path, f"mlhc_anchor_model_best_image_text_{args.logspec}_{dataset_name}.pth"))
+            torch.save(checkpoint, os.path.join(model_save_path, f"mlhc_anchor_model_best_two_transforms_{args.logspec}_{dataset_name}.pth"))
             
         print(f'Dataset:{dataset_name}')
         print(f'TOP-1 train Accuracy: {train_acc}')
