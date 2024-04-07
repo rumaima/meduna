@@ -5,7 +5,7 @@ TRAINER=LaFTer
 CFG=vit_b32
 dset="$1"
 txt_cls=lafter
-CUDA_VISIBLE_DEVICES=1 python /home/umaima.rahman/research/sem6/LaFTer/mlhc_cross_dataset.py \
+CUDA_VISIBLE_DEVICES=1 python /home/umaima.rahman/research/sem6/LaFTer/mlhc_anchor_one_batch_cluster.py \
 --root ${DATA} \
 --trainer ${TRAINER} \
 --dataset-config-file configs/datasets/"${dset}".yaml \
@@ -15,4 +15,4 @@ CUDA_VISIBLE_DEVICES=1 python /home/umaima.rahman/research/sem6/LaFTer/mlhc_cros
 --epochs 100 \
 --lambda1 1e-3 \
 --txt_cls ${txt_cls} \
---logspec "split_60_SGD_"
+--logspec "semi_SGD_"

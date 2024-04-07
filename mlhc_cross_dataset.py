@@ -251,8 +251,10 @@ def main(args):
         model_path_covid = "/l/users/umaima.rahman/research/sem6/lafter_checkpoints/mlhc_anchor_model_best_split_60_SGD__Covid.pth"
         model_path_pneumonia = "/l/users/umaima.rahman/research/sem6/lafter_checkpoints/mlhc_anchor_model_best_split_60_SGD__PneumoniaGuangzhou.pth"
         model_path_montgomery = "/l/users/umaima.rahman/research/sem6/lafter_checkpoints/mlhc_anchor_model_best_split_60_SGD__MontgomeryCXR.pth"
-       
-        model_path = model_path_montgomery
+
+        model_path_shenzhen_one = "/l/users/umaima.rahman/research/sem6/lafter_checkpoints/mlhc_clusdist_one_batch_model_best_split_60_SGD__ShenzhenCXR.pth"
+        model_path = model_path_shenzhen_one
+
         print(f'Dataset:{dataset_name}')
         other_train_acc = evaluate_other_datasets(args, train_loader, model_path, model, model_t)
         other_val_acc = evaluate_other_datasets(args, val_loader, model_path, model, model_t)
@@ -271,9 +273,7 @@ def main(args):
         weighted_accuracy = weighted_accuracy/total_len_data
         print(f'Weighted accuracy for dataset: {dataset_name} is {weighted_accuracy}')
 
-
-
-    # evaluate_dumb(test_loader)
+    evaluate_dumb(test_loader, train_loader, val_loader)
         
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

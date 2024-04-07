@@ -94,7 +94,7 @@ def setup_text_training_utils(args, model):
     criteria = LabelSmoothingCrossEntropy()
     return optimizer, scheduler, criteria
 
-def setup_lafter_training_utils(args, model):
+def setup_lafter_training_utils(args, model,model_t, model_g):
     model = model.cuda()
     model = model.float()
     params = list()
@@ -126,12 +126,12 @@ def setup_lafter_training_utils(args, model):
             params.append((key, value))
     print('----------------------------------------------------------')
 
-    # print('------------------ Learnable Parameters for transformer 1------------------')
-    # for key, value in model_t1.named_parameters():
-    #     if value.requires_grad:
-    #         print("\t{}, {}, {}".format(key, value.numel(), value.shape))
-    #         params.append((key, value))
-    # print('----------------------------------------------------------')
+    print('------------------ Learnable Parameters for transformer------------------')
+    for key, value in model_t.named_parameters():
+        if value.requires_grad:
+            print("\t{}, {}, {}".format(key, value.numel(), value.shape))
+            params.append((key, value))
+    print('----------------------------------------------------------')
 
     # print('------------------ Learnable Parameters for transformer 2------------------')
     # for key, value in model_t2.named_parameters():
@@ -155,8 +155,8 @@ def setup_lafter_training_utils(args, model):
         {'params': [p for n, p in params
                     if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
     ]
-    optimizer = optim.AdamW(optimizer_grouped_parameters, lr=args.lr, betas=(0.9, 0.999))
-    # optimizer = optim.SGD(optimizer_grouped_parameters, lr=args.lr)
+    # optimizer = optim.AdamW(optimizer_grouped_parameters, lr=args.lr, betas=(0.9, 0.999))
+    optimizer = optim.SGD(optimizer_grouped_parameters, lr=args.lr)
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, args.mile_stones, 0.60)
     # criteria = loss_fn[args.lossfn]()
     criteria = LabelSmoothingCrossEntropy()
@@ -407,7 +407,7 @@ def evalauation_mlhc_mlp(teloader, model, model_f, model_t, label_map):
     model.eval()
     return top1.avg * 100
 
-def evaluate_dumb(teloader):
+def evaluate_dumb(teloader, trloader, valoader):
     sum_1 = 0
     sum_all = 0
     for i, inputs in enumerate(tqdm(teloader)):
@@ -415,11 +415,24 @@ def evaluate_dumb(teloader):
         # inputs = inputs['img']
         sum_1+= labels.sum()
         sum_all+= len(labels)
+
+    for i, inputs in enumerate(tqdm(trloader)):
+        labels = inputs['label']
+        # inputs = inputs['img']
+        sum_1+= labels.sum()
+        sum_all+= len(labels)
+
+    for i, inputs in enumerate(tqdm(valoader)):
+        labels = inputs['label']
+        # inputs = inputs['img']
+        sum_1+= labels.sum()
+        sum_all+= len(labels)
+
         # print(labels.sum(), len(labels))
     print("============\n\n")
-    print(sum_1, sum_all)
+    print(sum_1, sum_all, sum_1*1.0/sum_all)
     print("============\n\n")
-    return 
+    exit()
 
 text_cls_epochs = {
     'DescribableTextures': 400, # 5.5k for txt_cls
