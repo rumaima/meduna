@@ -94,19 +94,21 @@ def setup_text_training_utils(args, model):
     criteria = LabelSmoothingCrossEntropy()
     return optimizer, scheduler, criteria
 
-def setup_lafter_training_utils(args, model,model_t, model_g):
+def setup_lafter_training_utils(args, model):
     model = model.cuda()
     model = model.float()
     params = list()
     for key, value in model.named_parameters():
         if key == 'prompt_embeddings':
-            value.requires_grad = True
+            value.requires_grad = False
         elif 'adapter' in key and 'adapter_pl' not in key:
-            value.requires_grad = True
+            value.requires_grad = False
         elif 'classifier' in key:
             value.requires_grad = True
-        elif 'projector' in key and not args.entropy:
+        elif 'vision_transformer' in key:
             value.requires_grad = True
+        elif 'projector' in key and not args.entropy:
+            value.requires_grad = False
         elif 'ln' in key:
             value.requires_grad = True
         else:
@@ -115,7 +117,7 @@ def setup_lafter_training_utils(args, model,model_t, model_g):
     for key, value in model.named_parameters():
         if 'visual' in key:
             if 'ln' in key or 'bn' in key:
-                value.requires_grad = True
+                value.requires_grad = False
             else:
                 value.requires_grad = False
 
@@ -125,27 +127,6 @@ def setup_lafter_training_utils(args, model,model_t, model_g):
             print("\t{}, {}, {}".format(key, value.numel(), value.shape))
             params.append((key, value))
     print('----------------------------------------------------------')
-
-    print('------------------ Learnable Parameters for transformer------------------')
-    for key, value in model_t.named_parameters():
-        if value.requires_grad:
-            print("\t{}, {}, {}".format(key, value.numel(), value.shape))
-            params.append((key, value))
-    print('----------------------------------------------------------')
-
-    # print('------------------ Learnable Parameters for transformer 2------------------')
-    # for key, value in model_t2.named_parameters():
-    #     if value.requires_grad:
-    #         print("\t{}, {}, {}".format(key, value.numel(), value.shape))
-    #         params.append((key, value))
-    # print('----------------------------------------------------------')
-
-    # print('------------------ Learnable Parameters for mlp ------------------')
-    # for key, value in model_g.named_parameters():
-    #     if value.requires_grad:
-    #         print("\t{}, {}, {}".format(key, value.numel(), value.shape))
-    #         params.append((key, value))
-    # print('----------------------------------------------------------')
 
     no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
     optimizer_grouped_parameters = [
@@ -307,9 +288,8 @@ def evaluation_image_text(dataloader,model, model_t, logit_scale, TE):
 
     return top1.avg * 100
 
-def evaluation_no_prompts(dataloader,model, model_t):
+def evaluation_no_prompts(dataloader,model):
     model.eval()
-    model_t.eval()
     batch_time = AverageMeter('Time', ':6.3f')
     top1 = AverageMeter('Acc@1', ':6.2f')
     one_hot = []
@@ -317,7 +297,7 @@ def evaluation_no_prompts(dataloader,model, model_t):
     criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
     end = time.time()
 
-    # test accuracy
+    # accuracy
     for i, inputs in enumerate(tqdm(dataloader)):
         labels = inputs['label']
         inputs = inputs['img']
@@ -326,11 +306,9 @@ def evaluation_no_prompts(dataloader,model, model_t):
         with torch.no_grad():
             inputs, labels = inputs.cuda(), labels.cuda()
             E_outputs = model.forward_normal_no_prompts(inputs)  ## for MedCLIP
-            Z_outputs = model_t(E_outputs)
+            Z_outputs = model.vision_transformer(E_outputs)
             Y_outputs = model.classifier(Z_outputs)
             Y_pl = F.softmax(Y_outputs)
-            # outputs = model.eval_clip(inputs)  ## for CLIP
-            # outputs = model.test_txt_clas(inputs) # to evaluate the performance of text classifier alone
             _, predicted = Y_pl.max(1)
             losses.append(criterion(Y_pl, labels).cpu())
             one_hot.append(predicted.eq(labels).cpu())

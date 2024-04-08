@@ -43,5 +43,5 @@ class TransformerClassifier(nn.Module):
         # Apply softmax for binary classification soft labels
         output_softmax = torch.softmax(output, dim=1)
         
-        return output_softmax
+        return output
 
