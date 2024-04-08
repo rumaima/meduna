@@ -27,7 +27,7 @@ import datasets.pneumonia_guangzhou
 import datasets.shenzhen_cxr
 import datasets.montgomery_cxr
 import datasets.covid
-import trainers.LaFTer as lafter_uft
+import trainers.LaFTer_mlhc as lafter_uft
 from trainers.mlhc_mlp import *
 from utils.utils import *
 import os
@@ -175,10 +175,9 @@ class lossmeter:
             self.avg = self.sum / self.count
 
 
-def evaluate_other_datasets(args, dataloader, model_path, model, model_t):
+def evaluate_other_datasets(args, dataloader, model_path, model):
     state_dict = torch.load(model_path)
     model.load_state_dict(state_dict["model"])
-    model_t.load_state_dict(state_dict["model_t"])
     
     model.eval()
     batch_time = AverageMeter('Time', ':6.3f')
@@ -196,7 +195,7 @@ def evaluate_other_datasets(args, dataloader, model_path, model, model_t):
         with torch.no_grad():
             inputs, labels = inputs.cuda(), labels.cuda()
             E_outputs = model.forward_normal_no_prompts(inputs)  ## for MedCLIP
-            Z_outputs = model_t(E_outputs)
+            Z_outputs = model.vision_transformer(E_outputs)
             Y_outputs = model.classifier(Z_outputs)
             Y_pl = F.softmax(Y_outputs)
             _, predicted = Y_pl.max(1)
@@ -234,31 +233,26 @@ def main(args):
     val_loader = trainer.val_loader
     test_loader = trainer.test_loader
     train_loader = trainer.train_loader_x
-    input_size = 512  # Input embedding size
-    hidden_size = 256
-    num_attention_heads = 8
-    num_hidden_layers = 8
-    output_size = 16  # Output size for binary classification
 
-    # Create the model
-    model_t = TransformerClassifier(input_size, hidden_size, num_attention_heads, num_hidden_layers, output_size)
-    model_t = model_t.to(model.device)
+   
 
     if args.zero_shot:
         zero_shot(model, test_loader)
     else:
-        model_path_shenzhen = "/l/users/umaima.rahman/research/sem6/lafter_checkpoints/mlhc_anchor_model_best_split_60_SGD__ShenzhenCXR.pth"
-        model_path_covid = "/l/users/umaima.rahman/research/sem6/lafter_checkpoints/mlhc_anchor_model_best_split_60_SGD__Covid.pth"
-        model_path_pneumonia = "/l/users/umaima.rahman/research/sem6/lafter_checkpoints/mlhc_anchor_model_best_split_60_SGD__PneumoniaGuangzhou.pth"
-        model_path_montgomery = "/l/users/umaima.rahman/research/sem6/lafter_checkpoints/mlhc_anchor_model_best_split_60_SGD__MontgomeryCXR.pth"
+        # model_path_shenzhen = "/l/users/umaima.rahman/research/sem6/lafter_checkpoints/mlhc_anchor_model_best_split_60_SGD__ShenzhenCXR.pth"
+        # model_path_covid = "/l/users/umaima.rahman/research/sem6/lafter_checkpoints/mlhc_anchor_model_best_split_60_SGD__Covid.pth"
+        # model_path_pneumonia = "/l/users/umaima.rahman/research/sem6/lafter_checkpoints/mlhc_anchor_model_best_split_60_SGD__PneumoniaGuangzhou.pth"
+        # model_path_montgomery = "/l/users/umaima.rahman/research/sem6/lafter_checkpoints/mlhc_anchor_model_best_split_60_SGD__MontgomeryCXR.pth"
 
-        model_path_shenzhen_one = "/l/users/umaima.rahman/research/sem6/lafter_checkpoints/mlhc_clusdist_one_batch_model_best_split_60_SGD__ShenzhenCXR.pth"
-        model_path = model_path_shenzhen_one
+        # model_path_shenzhen_one = "/l/users/umaima.rahman/research/sem6/lafter_checkpoints/mlhc_clusdist_one_batch_model_best_split_60_SGD__ShenzhenCXR.pth"
+        
+        model_path = args.model_path
 
         print(f'Dataset:{dataset_name}')
-        other_train_acc = evaluate_other_datasets(args, train_loader, model_path, model, model_t)
-        other_val_acc = evaluate_other_datasets(args, val_loader, model_path, model, model_t)
-        other_test_acc = evaluate_other_datasets(args, test_loader,model_path, model, model_t)
+        other_train_acc = evaluate_other_datasets(args, train_loader, model_path, model)
+        other_val_acc = evaluate_other_datasets(args, val_loader, model_path, model)
+        other_test_acc = evaluate_other_datasets(args, test_loader,model_path, model)
+
         len_train_loader = len(train_loader)
         len_val_loader = len(val_loader)
         len_test_loader = len(test_loader)
@@ -267,13 +261,14 @@ def main(args):
         print(f'TOP-1 train Accuracy: {other_train_acc}')
         print(f'TOP-1 val Accuracy: {other_val_acc}')
         print(f'TOP-1 test Accuracy: {other_test_acc}')
+        logger.info(f"Evaluation on \t{dataset_name}:\t\t{train_acc}\t{val_acc}\t{test_acc}")
 
         print('--------------------------------------------------------')
         weighted_accuracy = len_train_loader * other_train_acc + len_val_loader * other_val_acc + len_test_loader * other_test_acc 
         weighted_accuracy = weighted_accuracy/total_len_data
         print(f'Weighted accuracy for dataset: {dataset_name} is {weighted_accuracy}')
 
-    evaluate_dumb(test_loader, train_loader, val_loader)
+    # evaluate_dumb(test_loader, train_loader, val_loader)
         
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -353,6 +348,7 @@ if __name__ == "__main__":
     parser.add_argument('--prompt_epochs', type=int, default=100)
     parser.add_argument('--logfolder', default='logs', type=str)
     parser.add_argument('--logspec', default='logs', type=str)
+    parser.add_argument('--model_path', default='', type=str)
     args = parser.parse_args()
     args.mile_stones = None
     main(args)

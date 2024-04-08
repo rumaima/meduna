@@ -212,7 +212,7 @@ def test(args, teloader, model):
 
 
         
-def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name):
+def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name, model_path):
     all_acc_test = list()
     all_acc_train = list()
     all_acc_val = list()
@@ -236,8 +236,6 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name):
     print(f'TOP-1 test Accuracy: {test_acc}')
     logger.info(f"\t -1\t{train_acc}\t{val_acc}\t{test_acc}")
 
-
-    model_save_path = "/l/users/umaima.rahman/research/sem6/review_checkpoints"
     for epoch in range(args.epochs):
         print(f'Epoch: {epoch}')
         model.eval()
@@ -247,8 +245,6 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name):
         end = time.time()
 
         for i, batch in enumerate((tr_loader)):
-            
-
             data_time.update(time.time() - end)
             batch_time.update(time.time() - end)
 
@@ -261,8 +257,6 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name):
             input_label_batch = batch["label"]
 
             m = len(input_image_batch)
-           
-            num_classes = 2
 
             E = model.forward_normal_no_prompts(input_image_batch)
             Z = model.vision_transformer(E)
@@ -313,9 +307,7 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name):
                         len(tr_loader),
                         losses=loss.item(),
                         lr=optimizer.param_groups[0]["lr"],
-                    ))
-            # breakpoint()
-            # loss.requires_grad = True
+                    ))     
             loss.backward()
             optimizer.step()
         scheduler.step()
@@ -330,7 +322,6 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name):
         val_acc = np.round(val_acc,2)
         test_acc = np.round(test_acc,2)
     
-
         if val_acc > best_acc:
             best_acc = val_acc
             checkpoint = {
@@ -342,7 +333,7 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name):
             print(f'Saving model for epoch: {epoch}')
             print(f'TOP-1 validation Accuracy: {val_acc}')
 
-            torch.save(checkpoint, os.path.join(model_save_path, f"mlhc_self_transformer_model_best_{args.logspec}_{dataset_name}.pth"))
+            torch.save(checkpoint, model_path)
             
         print(f'Dataset:{dataset_name}')
         print(f'TOP-1 train Accuracy: {train_acc}')
@@ -409,13 +400,13 @@ def main(args):
     val_loader = trainer.val_loader
     test_loader = trainer.test_loader
     train_loader = trainer.train_loader_x
-
+    model_path = args.model_path
 
     if args.zero_shot:
         zero_shot(model, test_loader)
     else:
         print(f'Dataset:{dataset_name}')
-        train_mlhc(args, model, train_loader, val_loader, test_loader, dataset_name)
+        train_mlhc(args, model, train_loader, val_loader, test_loader, dataset_name, model_path)
         # train_lafter(args, model,train_loader, test_loader)
         # alignment_score = embedding_similarity(args, cfg, model, test_loader, label_mapping)
         # print(f"\nAlignment score:\n {alignment_score:.2f}")
@@ -498,6 +489,7 @@ if __name__ == "__main__":
     parser.add_argument('--prompt_epochs', type=int, default=100)
     parser.add_argument('--logfolder', default='logs', type=str)
     parser.add_argument('--logspec', default='logs', type=str)
+    parser.add_argument('--model_path', default='', type=str)
     args = parser.parse_args()
     args.mile_stones = None
     main(args)

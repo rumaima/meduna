@@ -288,7 +288,7 @@ def evaluation_image_text(dataloader,model, model_t, logit_scale, TE):
 
     return top1.avg * 100
 
-def evaluation_no_prompts(dataloader,model):
+def evaluation_no_prompts(dataloader,model, pickle_z=False):
     model.eval()
     batch_time = AverageMeter('Time', ':6.3f')
     top1 = AverageMeter('Acc@1', ':6.2f')
@@ -312,6 +312,7 @@ def evaluation_no_prompts(dataloader,model):
             _, predicted = Y_pl.max(1)
             losses.append(criterion(Y_pl, labels).cpu())
             one_hot.append(predicted.eq(labels).cpu())
+            
         acc1 = one_hot[-1].sum().item() / len(labels)
         top1.update(acc1, len(labels))
         batch_time.update(time.time() - end)
