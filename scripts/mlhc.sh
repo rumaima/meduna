@@ -3,6 +3,7 @@
 DATA="/l/users/umaima.rahman/datasets/"
 MODEL_DIR_PATH="/l/users/umaima.rahman/research/sem6/mlhc_checkpoints"
 TRAINER=LaFTer
+LOGSPEC="_sup_SGD_"
 CFG=vit_b32
 dset="$1"
 txt_cls=lafter
@@ -13,8 +14,8 @@ CUDA_VISIBLE_DEVICES=1 python /home/umaima.rahman/research/sem6/LaFTer/mlhc_anch
 --config-file configs/trainers/text_cls/${CFG}.yaml \
 --output-dir output/${TRAINER}/${CFG}/"${dset}" \
 --lr 1e-2 \
---epochs 100 \
+--epochs 55 \
 --lambda1 1e-3 \
 --txt_cls ${txt_cls} \
---logspec "_sup_SGD_" \
---model_path ${MODEL_DIR_PATH}/"${dset}""${logspec}".pth
+--logspec ${LOGSPEC} \
+--model_path ${MODEL_DIR_PATH}/"${dset}${LOGSPEC}".pth 

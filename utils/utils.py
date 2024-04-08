@@ -13,6 +13,7 @@ from torch.optim.lr_scheduler import _LRScheduler
 from tqdm import tqdm
 import random
 from pathlib import Path
+from sklearn.metrics import f1_score, roc_curve, auc
 
 
 lafter_datasets = ['DescribableTextures',  'EuroSAT', 'OxfordFlowers', 'SUN397', 'UCF101', 'ImageNetR', 'ImageNetSketch',
@@ -259,7 +260,6 @@ def evaluation_image_text(dataloader,model, model_t, logit_scale, TE):
     losses= []
     criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
     end = time.time()
-
     # test accuracy
     for i, inputs in enumerate(tqdm(dataloader)):
         labels = inputs['label']
@@ -269,7 +269,6 @@ def evaluation_image_text(dataloader,model, model_t, logit_scale, TE):
         with torch.no_grad():
             inputs, labels = inputs.cuda(), labels.cuda()
             E_outputs = model.forward_normal_no_prompts(inputs)  ## for MedCLIP
-            breakpoint()
             Z_outputs = model_t(E_outputs)
             W_outputs = model.dim_reduction(TE)
             Y_outputs = logit_scale * Z_outputs.cuda() @ W_outputs
@@ -288,7 +287,7 @@ def evaluation_image_text(dataloader,model, model_t, logit_scale, TE):
 
     return top1.avg * 100
 
-def evaluation_no_prompts(dataloader,model, pickle_z=False):
+def evaluation_no_prompts(dataloader,model, pickle_z=None):
     model.eval()
     batch_time = AverageMeter('Time', ':6.3f')
     top1 = AverageMeter('Acc@1', ':6.2f')
@@ -309,17 +308,20 @@ def evaluation_no_prompts(dataloader,model, pickle_z=False):
             Z_outputs = model.vision_transformer(E_outputs)
             Y_outputs = model.classifier(Z_outputs)
             Y_pl = F.softmax(Y_outputs)
+            Y_arg = Y_pl.argmax(axis=1)
             _, predicted = Y_pl.max(1)
             losses.append(criterion(Y_pl, labels).cpu())
             one_hot.append(predicted.eq(labels).cpu())
             
         acc1 = one_hot[-1].sum().item() / len(labels)
         top1.update(acc1, len(labels))
+
         batch_time.update(time.time() - end)
         end = time.time()
     model.eval()
 
     return top1.avg * 100
+
 
 def evaluation_train_one_batch(dataloader,model, model_t):
     model.eval()

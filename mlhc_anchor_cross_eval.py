@@ -33,6 +33,7 @@ from utils.utils import *
 import os
 import clip
 from loguru import logger
+import pickle
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -175,18 +176,60 @@ class lossmeter:
             self.avg = self.sum / self.count
 
 
-def evaluate_other_datasets(args, dataloader, model_path, model):
-    state_dict = torch.load(model_path)
-    model.load_state_dict(state_dict["model"])
+# def evaluate_other_datasets(args, dataloader, model_path, model):
+#     state_dict = torch.load(model_path)
+#     model.load_state_dict(state_dict["model"])
+#     model = model.cuda()
+#     model.eval()
+#     batch_time = AverageMeter('Time', ':6.3f')
+#     top1 = AverageMeter('Acc@1', ':6.2f')
+#     one_hot = []
+#     losses= []
+#     criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
+#     end = time.time()
+
+#     for i, inputs in enumerate(tqdm(dataloader)):
+#         labels = inputs['label']
+#         inputs = inputs['img']
+#         if isinstance(inputs, list):
+#             inputs = inputs[0]
+#         with torch.no_grad():
+#             inputs, labels = inputs.cuda(), labels.cuda()
+#             E_outputs = model.forward_normal_no_prompts(inputs)  ## for MedCLIP
+#             Z_outputs = model.vision_transformer(E_outputs)
+#             Y_outputs = model.classifier(Z_outputs)
+#             Y_pl = F.softmax(Y_outputs)
+#             _, predicted = Y_pl.max(1)
+#             losses.append(criterion(Y_pl, labels).cpu())
+#             one_hot.append(predicted.eq(labels).cpu())
+#         acc1 = one_hot[-1].sum().item() / len(labels)
+#         top1.update(acc1, len(labels))
+#         batch_time.update(time.time() - end)
+#         end = time.time()
+#     model.eval()
+
+#     return top1.avg * 100
     
+def evaluate_other_datasets(dataloader, model, pickle_z=None):
     model.eval()
+    model = model.cuda()
     batch_time = AverageMeter('Time', ':6.3f')
     top1 = AverageMeter('Acc@1', ':6.2f')
     one_hot = []
     losses= []
+    if pickle_z is not None:
+        N = len(dataloader.dataset)
+
+        pickle_dict = {'Z' :np.zeros((N,16)),
+                        'Ytrue' :np.zeros((N,)), 
+                        'Yhat' :np.zeros((N,)),
+                        'count': 0}
+        
+
     criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
     end = time.time()
 
+    # accuracy
     for i, inputs in enumerate(tqdm(dataloader)):
         labels = inputs['label']
         inputs = inputs['img']
@@ -198,17 +241,43 @@ def evaluate_other_datasets(args, dataloader, model_path, model):
             Z_outputs = model.vision_transformer(E_outputs)
             Y_outputs = model.classifier(Z_outputs)
             Y_pl = F.softmax(Y_outputs)
+            Y_arg = Y_pl.argmax(axis=1)
             _, predicted = Y_pl.max(1)
             losses.append(criterion(Y_pl, labels).cpu())
             one_hot.append(predicted.eq(labels).cpu())
+            
+            if pickle_z is not None:
+                pickle_dict['Z'][pickle_dict['count']: pickle_dict['count']+len(inputs)] = np.array(Z_outputs.cpu())
+                pickle_dict['Yhat'][pickle_dict['count']: pickle_dict['count']+len(inputs)] = Y_arg.cpu()
+                pickle_dict['Ytrue'][pickle_dict['count']: pickle_dict['count']+len(inputs)] = labels.cpu()
+                pickle_dict['count'] += len(inputs)
+
         acc1 = one_hot[-1].sum().item() / len(labels)
         top1.update(acc1, len(labels))
+
         batch_time.update(time.time() - end)
+        
         end = time.time()
     model.eval()
 
+    if pickle_z is not None:
+        # calculate F1 score, use pickle_dict['Yhat'] and pickle_dict['Ytrue']
+        pickle_dict['f1'] = f1_score(pickle_dict['Ytrue'], pickle_dict['Yhat'])
+
+        # Calculate ROC curve, use pickle_dict['Yhat'] and pickle_dict['Ytrue']
+        fpr, tpr, thresholds = roc_curve(pickle_dict['Ytrue'], pickle_dict['Yhat'])
+        roc_auc = auc(fpr, tpr)
+
+        pickle_dict['fpr'] = fpr 
+        pickle_dict['tpr'] = tpr 
+        pickle_dict['thresh'] = thresholds
+        pickle_dict['roc_auc'] = roc_auc 
+
+        # pickle the dictionary here
+        with open(pickle_z, 'wb') as f:
+            pickle.dump(pickle_dict, f)
+
     return top1.avg * 100
-    
 
 def main(args):
     cfg = setup_cfg(args)
@@ -249,19 +318,19 @@ def main(args):
         model_path = args.model_path
 
         print(f'Dataset:{dataset_name}')
-        other_train_acc = evaluate_other_datasets(args, train_loader, model_path, model)
-        other_val_acc = evaluate_other_datasets(args, val_loader, model_path, model)
-        other_test_acc = evaluate_other_datasets(args, test_loader,model_path, model)
+        other_train_acc = evaluate_other_datasets(train_loader, model)
+        other_val_acc = evaluate_other_datasets(val_loader, model)
+        other_test_acc = evaluate_other_datasets(test_loader, model, pickle_z=args.pickle_file_path)
 
-        len_train_loader = len(train_loader)
-        len_val_loader = len(val_loader)
-        len_test_loader = len(test_loader)
+        len_train_loader = len(train_loader.dataset)
+        len_val_loader = len(val_loader.dataset)
+        len_test_loader = len(test_loader.dataset)
         total_len_data = len_train_loader + len_val_loader + len_test_loader
         print('-------------------TOP-1 Accuracy----------------------')
         print(f'TOP-1 train Accuracy: {other_train_acc}')
         print(f'TOP-1 val Accuracy: {other_val_acc}')
         print(f'TOP-1 test Accuracy: {other_test_acc}')
-        logger.info(f"Evaluation on \t{dataset_name}:\t\t{train_acc}\t{val_acc}\t{test_acc}")
+        logger.info(f"Evaluation on \t{dataset_name}:\t\t{other_train_acc}\t{other_val_acc}\t{other_test_acc}")
 
         print('--------------------------------------------------------')
         weighted_accuracy = len_train_loader * other_train_acc + len_val_loader * other_val_acc + len_test_loader * other_test_acc 
@@ -349,6 +418,7 @@ if __name__ == "__main__":
     parser.add_argument('--logfolder', default='logs', type=str)
     parser.add_argument('--logspec', default='logs', type=str)
     parser.add_argument('--model_path', default='', type=str)
+    parser.add_argument('--pickle_file_path', default='', type=str)
     args = parser.parse_args()
     args.mile_stones = None
     main(args)

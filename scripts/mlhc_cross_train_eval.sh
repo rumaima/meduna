@@ -3,7 +3,7 @@
 command1="bash scripts/mlhc.sh"
 command2="bash scripts/mlhc_eval.sh"
 
-datasets=("shenzhen_cxr" "mongomery_cxr" "pneumonia_guangzhou" "covid")
+datasets=("shenzhen_cxr" "montgomery_cxr" "pneumonia_guangzhou" "covid")
 
 this_dataset="$1"  # First command line argument
 

@@ -27,6 +27,7 @@ class MontgomeryCXR(DatasetBase):
 
         if os.path.exists(self.split_path):
             train_, val_, test_ = OxfordPets.read_split(self.split_path, self.image_dir)
+        
         else:
             train_, val_, test_ = DTD.read_and_split_data(self.image_dir, new_cnames=NEW_CNAMES)
             OxfordPets.save_split(train_, val_, test_, self.split_path, self.image_dir)

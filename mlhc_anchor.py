@@ -212,7 +212,7 @@ def test(args, teloader, model):
 
 
         
-def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name, model_path):
+def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name):
     all_acc_test = list()
     all_acc_train = list()
     all_acc_val = list()
@@ -328,12 +328,13 @@ def train_mlhc(args, model, tr_loader, val_loader, test_loader, dataset_name, mo
                 "model": model.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "epoch": epoch,
+                "lr":optimizer.param_groups[0]["lr"]
             }
             print(f'Dataset:{dataset_name}')
             print(f'Saving model for epoch: {epoch}')
             print(f'TOP-1 validation Accuracy: {val_acc}')
 
-            torch.save(checkpoint, model_path)
+            torch.save(checkpoint, args.model_path)
             
         print(f'Dataset:{dataset_name}')
         print(f'TOP-1 train Accuracy: {train_acc}')
@@ -400,13 +401,12 @@ def main(args):
     val_loader = trainer.val_loader
     test_loader = trainer.test_loader
     train_loader = trainer.train_loader_x
-    model_path = args.model_path
 
     if args.zero_shot:
         zero_shot(model, test_loader)
     else:
         print(f'Dataset:{dataset_name}')
-        train_mlhc(args, model, train_loader, val_loader, test_loader, dataset_name, model_path)
+        train_mlhc(args, model, train_loader, val_loader, test_loader, dataset_name)
         # train_lafter(args, model,train_loader, test_loader)
         # alignment_score = embedding_similarity(args, cfg, model, test_loader, label_mapping)
         # print(f"\nAlignment score:\n {alignment_score:.2f}")
@@ -490,6 +490,7 @@ if __name__ == "__main__":
     parser.add_argument('--logfolder', default='logs', type=str)
     parser.add_argument('--logspec', default='logs', type=str)
     parser.add_argument('--model_path', default='', type=str)
+    
     args = parser.parse_args()
     args.mile_stones = None
     main(args)
