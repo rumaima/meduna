@@ -211,8 +211,10 @@ class lossmeter:
 #     return top1.avg * 100
     
 def evaluate_other_datasets(dataloader, model, pickle_z=None):
-    model.eval()
+    state_dict = torch.load(args.model_path)
+    model.load_state_dict(state_dict["model"])
     model = model.cuda()
+    model.eval()
     batch_time = AverageMeter('Time', ':6.3f')
     top1 = AverageMeter('Acc@1', ':6.2f')
     one_hot = []

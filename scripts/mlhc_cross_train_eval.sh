@@ -25,7 +25,7 @@ if [ "$dataset_exists" == false ]; then
     exit 1
 fi
 
-$command1 $this_dataset
+# $command1 $this_dataset
 
 for dataset in "${datasets[@]}"; do
     if [ "$dataset" != "$this_dataset" ]; then
