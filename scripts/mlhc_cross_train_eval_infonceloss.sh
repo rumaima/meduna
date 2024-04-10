@@ -1,7 +1,7 @@
 #!/bin/bash
-
-command1="bash scripts/mlhc.sh"
-command2="bash scripts/mlhc_eval.sh"
+loss="_infonceloss"
+command1="bash scripts/mlhc${loss}.sh"
+command2="bash scripts/mlhc_eval${loss}.sh"
 
 datasets=("shenzhen_cxr" "montgomery_cxr" "pneumonia_guangzhou" "covid")
 
