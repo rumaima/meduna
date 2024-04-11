@@ -216,6 +216,7 @@ def train_lafter(args, model, tr_loader, val_loader, dataset_name):
     # first train text classifier
     train_txt_cls(args, model)
 
+    best_acc=0.0
     all_acc = list()
     optimizer, scheduler, criteria = setup_lafter_training_utils(args, model)
     batch_time = lossmeter()
@@ -256,14 +257,29 @@ def train_lafter(args, model, tr_loader, val_loader, dataset_name):
                         losses=loss.item(),
                         lr=optimizer.param_groups[0]["lr"],
                     ))
-
+            loss.requires_grad=True
             loss.backward()
             optimizer.step()
         scheduler.step()
+
         print(f'Evaluation: {epoch}')
         acc = test_prompting(val_loader, model)
         print(f'TOP-1 Accuracy: {acc}')
         all_acc.append(acc)
+        if acc > best_acc:
+            best_acc = acc
+            checkpoint = {
+                "model": model.state_dict(),
+                "optimizer": optimizer.state_dict(),
+                "epoch": epoch,
+                "lr":optimizer.param_groups[0]["lr"]
+            }
+            print(f'Dataset:{dataset_name}')
+            print(f'Saving model for epoch: {epoch}')
+            print(f'TOP-1 validation Accuracy: {acc}')
+
+            torch.save(checkpoint, args.model_path)
+
     print(f"Lafter Original pipleine for dataset: {dataset_name}")
     print(f'-------------------------------- Best Accuracy: {max(all_acc)} --------------------------------')
 
@@ -370,6 +386,7 @@ if __name__ == "__main__":
     parser.add_argument('--epochs', type=int, default=50)
     parser.add_argument('--txt_epochs', type=int, default=1000)
     parser.add_argument('--logfolder', default='logs', type=str)
+    parser.add_argument('--model_path', default='', type=str)
     args = parser.parse_args()
     args.mile_stones = None
     main(args)

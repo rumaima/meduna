@@ -208,6 +208,7 @@ class LaFTerUFT(nn.Module):
             img_features_adapter = self.adapter(img_features_2)
         return img_features_adapter
 
+
     def forward(self, x):
         # only used for 0-shot-eval
         with torch.no_grad():

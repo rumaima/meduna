@@ -15,6 +15,7 @@ from utils.data_utils import ds_specific_templates
 from MedCLIP.medclip import MedCLIPModel, MedCLIPVisionModelViT, MedCLIPTextModel
 from MedCLIP.medclip.dataset import MedCLIPProcessor
 
+
 def load_clip_to_cpu(cfg):
     backbone_name = cfg.MODEL.BACKBONE.NAME
     url = clip._MODELS[backbone_name]
@@ -37,7 +38,7 @@ class LaFTerUFT(nn.Module):
 
     def __init__(self, model, classes, templates, ds_templates=None, device='cuda', log=None, dataset_name=None, txt_cls=None, cfg=None, processor=None):
         super(LaFTerUFT, self).__init__()
-        self.adapter_pl = None
+        # self.adapter_pl = None
         self.device = device
         self.cfg = cfg
         self.processor = processor
@@ -67,6 +68,7 @@ class LaFTerUFT(nn.Module):
         self.text_features = self.txt_features()
         self.classifier = nn.Sequential(nn.Linear(16, len(classes), bias=False)).to(device)
         # self.dim_reduction = nn.Sequential(nn.Linear(512, 16, bias=False)).to(device)
+        self.adapter_pl = nn.Sequential(nn.Linear(int(self.backbone_out_size), len(classes), bias=False)).to(device)
         
         
     def train_txt_clas(self, criteria):
@@ -197,6 +199,15 @@ class LaFTerUFT(nn.Module):
             img_features_adapter = self.adapter(img_features_2)
         return img_features_adapter
 
+    def eval_clip_with_embeddings(self, x):
+        with torch.no_grad():
+            # img_features_2 = self.incorporate_prompt(x)
+            # img_features_2 = self.embeddings_after_prompts(img_features_2) for clip
+            img_features_2, dimension_size_2 = self.incorporate_prompt(x)
+            img_features_2 = self.embeddings_after_prompts(img_features_2, dimension_size_2)
+            img_features_adapter = self.adapter(img_features_2)
+        return img_features_2, img_features_adapter
+
     def forward(self, x):
         # only used for 0-shot-eval
         with torch.no_grad():
@@ -270,7 +281,6 @@ class LaFTerUFT(nn.Module):
 
     def patch_embeddings(self, x: torch.tensor): 
         # shape of x = torch.Size([50, 3, 224, 224]) for CLIP
-        # breakpoint()
         # self.model.model(x)
         embedding_output, input_dimensions = self.model.vision_model.model.embeddings(x) # for MEDCLIP  
         return embedding_output, input_dimensions
@@ -366,7 +376,6 @@ class LaFTer(TrainerX):
                                           templates=['a photo of a {} chest x_ray'], ds_templates = ds_specific_templates[cfg.DATASET.NAME], 
                                           dataset_name= cfg.DATASET.NAME, txt_cls = cfg.txt_cls, cfg=cfg,
                                           processor=processor)
-        
         self.register_model("adapt", self.model)
         device_count = torch.cuda.device_count()
         if device_count > 1:
