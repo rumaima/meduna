@@ -171,6 +171,66 @@ def test_prompting(teloader, model):
     model.eval()
     return top1.avg * 100
 
+# def test_prompting_f1(teloader, model, pickle_z=None):
+#     model.eval()
+#     batch_time = AverageMeter('Time', ':6.3f')
+#     top1 = AverageMeter('Acc@1', ':6.2f')
+#     one_hot = []
+#     losses = []
+#     if pickle_z is not None:
+#         N = len(dataloader.dataset)
+
+#         pickle_dict = {
+#                         'Ytrue' :np.zeros((N,)), 
+#                         'Yhat' :np.zeros((N,)),
+#                         'count': 0}
+
+#     criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
+#     end = time.time()
+#     for i, inputs in enumerate(tqdm(teloader)):
+#         labels = inputs['label']
+#         inputs = inputs['img']
+#         if isinstance(inputs, list):
+#             inputs = inputs[0]
+#         with torch.no_grad():
+#             inputs, labels = inputs.cuda(), labels.cuda()
+#             outputs = model.eval_clip(inputs)
+#             Y_pl = F.softmax(outputs)
+#             Y_arg = Y_pl.argmax(axis=1)
+#             _, predicted = Y_pl.max(1)
+#             losses.append(criterion(outputs, labels).cpu())
+#             one_hot.append(predicted.eq(labels).cpu())
+
+#             if pickle_z is not None:
+#                 pickle_dict['Yhat'][pickle_dict['count']: pickle_dict['count']+len(inputs)] = Y_arg.cpu()
+#                 pickle_dict['Ytrue'][pickle_dict['count']: pickle_dict['count']+len(inputs)] = labels.cpu()
+#                 pickle_dict['count'] += len(inputs)
+
+#         acc1 = one_hot[-1].sum().item() / len(labels)
+#         top1.update(acc1, len(labels))
+#         batch_time.update(time.time() - end)
+#         end = time.time()
+#     model.eval()
+
+#     if pickle_z is not None:
+#         # calculate F1 score, use pickle_dict['Yhat'] and pickle_dict['Ytrue']
+#         pickle_dict['f1'] = f1_score(pickle_dict['Ytrue'], pickle_dict['Yhat'])
+
+#         # Calculate ROC curve, use pickle_dict['Yhat'] and pickle_dict['Ytrue']
+#         fpr, tpr, thresholds = roc_curve(pickle_dict['Ytrue'], pickle_dict['Yhat'])
+#         roc_auc = auc(fpr, tpr)
+
+#         pickle_dict['fpr'] = fpr 
+#         pickle_dict['tpr'] = tpr 
+#         pickle_dict['thresh'] = thresholds
+#         pickle_dict['roc_auc'] = roc_auc 
+#         pickle_dict['acc'] = top1.avg * 100
+
+#         # pickle the dictionary here
+#         with open(pickle_z, 'wb') as f:
+#             pickle.dump(pickle_dict, f)
+
+#     return top1.avg * 100
 
 def test_prompting_ent(teloader, model):
     model.eval()

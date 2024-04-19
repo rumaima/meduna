@@ -2,6 +2,7 @@ import argparse
 import json
 import torch
 import datetime
+from torch.utils.data import ConcatDataset, DataLoader
 from dassl.utils import setup_logger, setup_loguru, set_random_seed, collect_env_info
 from dassl.config import get_cfg_default
 from dassl.engine import build_trainer
@@ -230,7 +231,6 @@ def evaluate_other_datasets(dataloader, model, pickle_z=None):
 
     criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
     end = time.time()
-
     # accuracy
     for i, inputs in enumerate(tqdm(dataloader)):
         labels = inputs['label']
@@ -274,6 +274,7 @@ def evaluate_other_datasets(dataloader, model, pickle_z=None):
         pickle_dict['tpr'] = tpr 
         pickle_dict['thresh'] = thresholds
         pickle_dict['roc_auc'] = roc_auc 
+        pickle_dict['acc'] = top1.avg * 100
 
         # pickle the dictionary here
         with open(pickle_z, 'wb') as f:
@@ -305,6 +306,7 @@ def main(args):
     test_loader = trainer.test_loader
     train_loader = trainer.train_loader_x
 
+
    
 
     if args.zero_shot:
@@ -323,6 +325,7 @@ def main(args):
         other_train_acc = evaluate_other_datasets(train_loader, model)
         other_val_acc = evaluate_other_datasets(val_loader, model)
         other_test_acc = evaluate_other_datasets(test_loader, model, pickle_z=args.pickle_file_path)
+
 
         len_train_loader = len(train_loader.dataset)
         len_val_loader = len(val_loader.dataset)

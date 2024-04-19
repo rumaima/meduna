@@ -14,4 +14,4 @@ CUDA_VISIBLE_DEVICES=3 python /home/umaima.rahman/research/sem6/LaFTer/LaFTer_or
 --output-dir output/${TRAINER}/${CFG}/"${dset}" \
 --lr 1e-2 \
 --txt_cls ${txt_cls} \
---model_path ${MODEL_DIR_PATH}/"model_lafter_original_${dset}".pth
+--model_path ${MODEL_DIR_PATH}/"model_lafter_original_${dset}".pth \

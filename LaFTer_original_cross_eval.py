@@ -174,6 +174,62 @@ class lossmeter:
         else:
             self.avg = self.sum / self.count
 
+def zero_shot_lafter(model, loader, pickle_z=None):
+    print('-------------- ZERO SHOT INFERENCE --------------')
+    total = 0.
+    correct_base = 0.
+    model.eval()
+
+    if pickle_z is not None:
+        N = len(loader.dataset)
+
+        pickle_dict = {'Z' :np.zeros((N,512)),
+                        'Ytrue' :np.zeros((N,)), 
+                        'Yhat' :np.zeros((N,)),
+                        'count': 0}
+    with torch.no_grad():
+        for i, inputs in enumerate(tqdm(loader)):
+            target = inputs['label']
+            images = inputs['img']
+            if isinstance(images, list):
+                images = images[0]
+
+            images = images.cuda()
+            target = target.cuda()
+            out = model(images)
+            logits_base = out
+            pred_base = torch.argmax(logits_base, dim=1)
+            
+            if pickle_z is not None:
+                pickle_dict['Yhat'][pickle_dict['count']: pickle_dict['count']+len(images)] = pred_base.cpu()
+                pickle_dict['Ytrue'][pickle_dict['count']: pickle_dict['count']+len(images)] = target.cpu()
+                pickle_dict['count'] += len(images)
+
+            for j in range(len(target)):
+                total += 1.
+                if pred_base[j] == target[j]:
+                    correct_base += 1.
+    top1 = (correct_base / total) * 100
+    print(f"Top-1 accuracy standard: {top1:.2f}")
+
+    if pickle_z is not None:
+        # calculate F1 score, use pickle_dict['Yhat'] and pickle_dict['Ytrue']
+        pickle_dict['f1'] = f1_score(pickle_dict['Ytrue'], pickle_dict['Yhat'])
+
+        # Calculate ROC curve, use pickle_dict['Yhat'] and pickle_dict['Ytrue']
+        fpr, tpr, thresholds = roc_curve(pickle_dict['Ytrue'], pickle_dict['Yhat'])
+        roc_auc = auc(fpr, tpr)
+
+        pickle_dict['fpr'] = fpr 
+        pickle_dict['tpr'] = tpr 
+        pickle_dict['thresh'] = thresholds
+        pickle_dict['roc_auc'] = roc_auc 
+
+        # pickle the dictionary here
+        with open(pickle_z, 'wb') as f:
+            pickle.dump(pickle_dict, f)
+    print(f"Pickle file {pickle_z} saved")
+    
 
 def evaluate_other_datasets_lafter(dataloader, model, pickle_z=None):
     state_dict = torch.load(args.model_path)
@@ -245,6 +301,22 @@ def evaluate_other_datasets_lafter(dataloader, model, pickle_z=None):
 
     return top1.avg * 100
 
+def dumb_max(dataloader):
+    N = len(dataloader.dataset)
+    all_ones = np.ones((N,))
+    all_zeros = np.zeros((N,))
+    all_labels = []
+    for i, inputs in enumerate(tqdm(dataloader)):
+        labels = inputs['label']
+        all_labels.append(labels)
+    complete_labels = []
+    for tensor in all_labels:
+        complete_labels.extend(tensor.tolist())
+    f1_ones = f1_score(complete_labels, all_ones)
+    f1_zeros = f1_score(complete_labels, all_zeros)
+    max_f1_score = max(f1_ones, f1_zeros)
+    return max_f1_score
+
 def main(args):
     cfg = setup_cfg(args)
     cfg.DATALOADER.TRAIN_X.BATCH_SIZE = args.batch_size
@@ -272,7 +344,8 @@ def main(args):
    
 
     if args.zero_shot:
-        zero_shot(model, test_loader)
+        # zero_shot(model, test_loader)
+        zero_shot_lafter(model, test_loader, pickle_z=args.pickle_file_path)
     else: 
         model_path = args.model_path
 
@@ -297,6 +370,9 @@ def main(args):
         print(f'Weighted accuracy for dataset: {dataset_name} is {weighted_accuracy}')
 
     # evaluate_dumb(test_loader, train_loader, val_loader)
+        # dumb_f1_score = dumb_max(test_loader)
+        # print("Dataset:", dataset_name)
+        # print("F1_score:", dumb_f1_score)
         
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

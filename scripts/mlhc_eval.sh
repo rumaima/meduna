@@ -8,7 +8,7 @@ LOGSPEC="_sup_SGD_"
 dset="$1"
 dset_target="$2"
 txt_cls=lafter
-CUDA_VISIBLE_DEVICES=2 python /home/umaima.rahman/research/sem6/LaFTer/mlhc_anchor_cross_eval.py \
+CUDA_VISIBLE_DEVICES=2 python /home/umaima.rahman/research/sem6/LaFTer/mlhc_anchor_cross_eval_f1.py \
 --root ${DATA} \
 --trainer ${TRAINER} \
 --dataset-config-file configs/datasets/"${dset_target}".yaml \

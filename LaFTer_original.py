@@ -28,6 +28,7 @@ import datasets.covid
 import trainers.LaFTer as lafter_uft
 from utils.utils import *
 import os
+import dill
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -201,6 +202,7 @@ def test(args, teloader, model):
         return top1_pl.avg * 100
 
 
+
 def train_txt_cls(args, model):
     optimizer, _, _ = setup_text_training_utils(args, model)
     criteria = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
@@ -305,6 +307,9 @@ def main(args):
     test_loader = trainer.test_loader
     train_loader = trainer.train_loader_x
 
+    # dataloader_save_path = f"/l/users/umaima.rahman/datasets/dataloaders/{dataset_name}_test_dataloader.pkl"
+    # torch.save(obj=test_loader, f=dataloader_save_path, pickle_module=dill)
+
     if args.zero_shot:
         zero_shot(model, test_loader)
     else:
@@ -387,6 +392,7 @@ if __name__ == "__main__":
     parser.add_argument('--txt_epochs', type=int, default=1000)
     parser.add_argument('--logfolder', default='logs', type=str)
     parser.add_argument('--model_path', default='', type=str)
+
     args = parser.parse_args()
     args.mile_stones = None
     main(args)
