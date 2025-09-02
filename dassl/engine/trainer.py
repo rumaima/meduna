@@ -6,6 +6,8 @@ from collections import OrderedDict
 import torch
 import torch.nn as nn
 from tqdm import tqdm
+import distutils.version
+
 from torch.utils.tensorboard import SummaryWriter
 
 from dassl.data import DataManager

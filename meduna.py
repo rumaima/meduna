@@ -20,18 +20,19 @@ import datasets.imagenet_a
 import datasets.caltech101
 import datasets.cifar
 import datasets.isic2018
-import datasets.idrid 
+import datasets.idrid
 import datasets.pneumonia_guangzhou
 import datasets.shenzhen_cxr
-import datasets.montgomery_cxr
-import datasets.covid 
-# import trainers.LaFTer_Randinit as lafter_uft
+import datasets.montgomery_cxr 
+import datasets.covid
 import trainers.LaFTer as lafter_uft
 from utils.utils import *
 import os
 import json
 import clip
 
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 def print_args(args, cfg):
     print("***************")
@@ -189,21 +190,25 @@ def embedding_similarity(args,cfg, model, teloader, label_mapping):
         # breakpoint()
         desc_all = [item for sublist in desc for item in sublist]
         prompt_label = "a photo of a " + class_name
-        prompts_labels = [0]*50 + [1]*51 + [2]*52 + [3]*50 + [4]*50 + [5]*55 + [6]*52 
-        prompts_labels = torch.tensor(prompts_labels).cuda()
-        text_label = clip.tokenize(prompt_label)
-        text_inputs = clip.tokenize(desc_all)
-
+        prompts_labels_isic2018 =   [0]*50 + [1]*51 + [2]*52 + [3]*50 + [4]*50 + [5]*55 + [6]*52 
+        prompts_labels_pneumonia =  [0]*78 + [1]*74
+        prompts_labels_shenzhen =   [0]*65 + [1]*69 
+        prompts_labels_montgomery = [0]*65 + [1]*69 
+        prompts_labels_idrid      = [0]*110 + [1]*110 + [2]*110 + [3]*110 + [4]*110 
+        prompts_labels = torch.tensor(prompts_labels_isic2018).cuda()
+        # text_label = clip.tokenize(prompt_label)
+        # text_inputs = clip.tokenize(desc_all)
+        processor = model.processor
+        inputs = processor(text=desc_all, return_tensors="pt", padding=True).input_ids.cuda() 
+        model.cuda()
+        outputs = model(inputs)
         if args.zero_shot:
             pass
         else:
             with torch.no_grad():
-                inputs, labels, descriptions = img.cuda(), labels.cuda(), text_inputs.cuda()
-                # inpits.shape: torch.Size([B, 3, 224, 224]), labels.shape: torch.Size([1]), descriptions.shape: torch.Size([110, 77])
-                img_feature = model.model.encode_image(inputs)
-                # img_feature.shape: torch.Size([B, 768])
-                txt_feature = model.model.encode_text(descriptions)
-                # txt_feature.shape: torch.Size([550, 768])
+                img_feature = outputs['img_embeds']
+                txt_feature = outputs['text_embeds']
+
 
                 image_features = img_feature / img_feature.norm(dim=1, keepdim=True)
                 text_features = txt_feature / txt_feature.norm(dim=1, keepdim=True)
@@ -270,13 +275,48 @@ def train_txt_cls(args, model):
     print(f"epoch: {i}, loss: ", loss)
     model.txt_cls_init()
 
+def select_confident_samples(logits, top):
+    batch_entropy = -(logits.softmax(1) * logits.log_softmax(1)).sum(1)
+    idx = torch.argsort(batch_entropy, descending=False)[:int(batch_entropy.size()[0] * top)]
+    return logits[idx], idx
+
+def avg_entropy(outputs):
+    logits = outputs - outputs.logsumexp(dim=-1, keepdim=True) # logits = outputs.log_softmax(dim=1) [N, 1000]
+    # avg_logits = logits.logsumexp(dim=0) - np.log(logits.shape[0]) # avg_logits = logits.mean(0) [1, 1000]
+    avg_logits = logits.logsumexp(dim=0) - torch.log(torch.tensor(logits.shape[0], device=outputs.device, dtype=outputs.dtype))
+    min_real = torch.finfo(avg_logits.dtype).min
+    avg_logits = torch.clamp(avg_logits, min=min_real)
+    return -(avg_logits * torch.exp(avg_logits)).sum(dim=-1)
+
+def final_entropy(model, output, optimizer, tta_steps=1, selection_p=0.1):
+    selected_idx = None
+    loss = 0
+    for j in range(tta_steps):
+        with torch.cuda.amp.autocast():
+            # breakpoint()
+            if selected_idx is not None:
+                output = output[selected_idx]
+            else:
+                output, selected_idx = select_confident_samples(output, selection_p)
+
+            loss += avg_entropy(output)
+
+        # optimizer.zero_grad()
+        # # compute gradient and do SGD step
+        # loss.backward()
+        # # Unscales the gradients of optimizer's assigned params in-place
+        # optimizer.step()
+    return loss
+
+def add_gaussian_noise(image_tensor):
+    noise = torch.randn_like(image_tensor) * args.std + args.mean
+    noisy_image_tensor = image_tensor + noise
+    return torch.clamp(noisy_image_tensor, 0, 1)
+
 def train_lafter(args, model, tr_loader, val_loader):
 
     # first train text classifier
     train_txt_cls(args, model)
-
-    #initilize the classifier randomly
-    # model.txt_cls_init()
 
     all_acc = list()
     optimizer, scheduler, criteria = setup_lafter_training_utils(args, model)
@@ -287,25 +327,52 @@ def train_lafter(args, model, tr_loader, val_loader):
         model.eval()
         model.adapter.train()
         end = time.time()
-
+        label_list = {"label":[],"pseudo_label":[]}
         for i, batch in enumerate((tr_loader)):
             data_time.update(time.time() - end)
             batch_time.update(time.time() - end)
 
             input = batch["img"]
             input = torch.stack(input)  # two views from dataloader
+            
+            # add gaussian noise to the image
+            # noisy_input = add_gaussian_noise(input)
+            # input = noisy_input
             input = input.to(model.device)
-
+            
             optimizer.zero_grad()
-
             pl = model.forward_normal_for_pl(input[0])
             out = model.forward_aug_with_prompts(input[1].float().cuda())
 
-            pseudo_label = F.softmax(pl, dim=-1)  # / 0.04
-            pseudo_label = pseudo_label.argmax(dim=1, keepdim=True)
-            pseudo_label = pseudo_label.flatten().cuda()
+            # print("pl.requires_grad:", pl.requires_grad)   # should be False (teacher, OK)
+            # print("out.requires_grad:", out.requires_grad) # should be True (student, must be trainable)
 
-            loss = criteria(out.squeeze(), pseudo_label)
+            
+            ent_loss = final_entropy(model, out, optimizer)
+
+            pseudo_label = F.softmax(pl, dim=-1)  # / 0.04
+            # arg_pl = pseudo_label.argmax(dim=1, keepdim=True) 
+            arg_pl = pseudo_label.argmax(dim=1) 
+            arg_pl = arg_pl.to(out.device).long()
+            
+            arg_pl_flat = arg_pl.flatten().cuda()
+            # disbale the next two lines and change loss, compare with softmax out 
+            out_ = F.softmax(out, dim=-1) 
+            out_ = out_.flatten().cuda()
+            
+            pseudo_label = pseudo_label.to(out_.device).long()
+            pseudo_label = pseudo_label.flatten().cuda()
+            cr_loss = criteria(out, arg_pl)
+            # lsce_loss = criteria(out.squeeze(), arg_pl_flat)
+            # cr_loss = lsce_loss # for label smooth cross entropy
+            loss = -cr_loss # for cosine similarity
+            
+            loss = 0.7*cr_loss + 1.5*ent_loss
+            
+
+            label_list["label"].append(batch["label"])
+            label_list["pseudo_label"].append(arg_pl.flatten())
+
             if i % args.print_freq == 0:
                 print(
                     "epoch [{0}/{1}][{2}/{3}]\t"
@@ -319,19 +386,21 @@ def train_lafter(args, model, tr_loader, val_loader):
                         lr=optimizer.param_groups[0]["lr"],
                     ))
 
+
             loss.backward()
             optimizer.step()
         scheduler.step()
         print(f'Evaluation: {epoch}')
-        acc = test_prompting(val_loader, model)
+        acc = test_prompting_ent(val_loader, model)
         print(f'TOP-1 Accuracy: {acc}')
         all_acc.append(acc)
     print(f'-------------------------------- Best Accuracy: {max(all_acc)} --------------------------------')
-
+    # save the lists
+    save_path = "/home/umaima.rahman/research/sem6/LaFTer/" 
+    # np.savez(os.path.join(save_path,"med_acc_list_isic_cos_ent.npz"), acc_list, acc_pl_list, acc_pl_tl_list)
     # print(f'Evaluation: {args.txt_epochs}')
     # acc = test_prompting(val_loader, model)
     # print(f'TOP-1 Accuracy: {acc}')
-
 
 def main(args):
     cfg = setup_cfg(args)
@@ -371,8 +440,7 @@ def main(args):
             4: ['Stage_4_Retinopathy',440, 549]
         }
         # to be changed according to the dataset
-    label_mapping = label_mapping_montgomery 
-
+    label_mapping = label_mapping_montgomery
 
     if cfg.SEED >= 0:
         print("Setting fixed seed: {}".format(cfg.SEED))
@@ -381,7 +449,6 @@ def main(args):
     print_args(args, cfg)
     if torch.cuda.is_available() and cfg.USE_CUDA:
         torch.backends.cudnn.benchmark = True
-    
     trainer = build_trainer(cfg)
     model = trainer.model
     model.args = args
@@ -392,8 +459,8 @@ def main(args):
         zero_shot(model, test_loader)
     else:
         train_lafter(args, model,train_loader, test_loader)
-        alignment_score = embedding_similarity(args, cfg, model, test_loader, label_mapping)
-        print(f"\nAlignment score:\n {alignment_score:.2f}")
+        # alignment_score = embedding_similarity(args, cfg, model, test_loader, label_mapping)
+        # print(f"\nAlignment score:\n {alignment_score:.2f}")
 
 
 if __name__ == "__main__":
@@ -468,9 +535,10 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, default=50)
     parser.add_argument('--workers', type=int, default=4)
     parser.add_argument('--lr', type=float, default=0.001)
-    parser.add_argument('--epochs', type=int, default=50)
+    parser.add_argument('--epochs', type=int, default=5)
     parser.add_argument('--txt_epochs', type=int, default=1000)
     parser.add_argument('--logfolder', default='logs', type=str)
+    parser.add_argument('--lossfn', type=str)
     args = parser.parse_args()
     args.mile_stones = None
     main(args)

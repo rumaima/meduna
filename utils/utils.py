@@ -50,10 +50,6 @@ def setup_text_training_utils(args, model):
     for key, value in model.named_parameters():
         if 'adapter' in key and 'adapter_pl' not in key:
             value.requires_grad = True
-        elif 'classifier' in key:
-            value.requires_grad = True
-        elif 'deep_classifier' in key:
-            value.requires_grad = True
         else:
             value.requires_grad = False
 
@@ -101,17 +97,15 @@ def setup_lafter_training_utils(args, model):
     params = list()
     for key, value in model.named_parameters():
         if key == 'prompt_embeddings':
-            value.requires_grad = False
-        elif 'adapter' in key and 'adapter_pl' not in key:
-            value.requires_grad = False
-        elif 'classifier' in key:
             value.requires_grad = True
-        elif 'vision_transformer' in key:
+        elif 'adapter' in key and 'adapter_pl' not in key:
             value.requires_grad = True
         elif 'projector' in key and not args.entropy:
             value.requires_grad = False
         elif 'ln' in key:
-            value.requires_grad = True
+            value.requires_grad = True 
+        elif 'prompt_proj' in key:
+            value.requires_grad = True  
         else:
             value.requires_grad = False
 
@@ -274,79 +268,6 @@ def test_prompting_ent(teloader, model):
     model.eval()
     return top1.avg * 100
 
-def evaluation_two_transformers(dataloader,model, model_t1, model_t2, logit_scale, TE):
-    model.eval()
-    model_t.eval()
-    batch_time = AverageMeter('Time', ':6.3f')
-    top1 = AverageMeter('Acc@1', ':6.2f')
-    one_hot = []
-    losses= []
-    criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
-    end = time.time()
-
-    # test accuracy
-    for i, inputs in enumerate(tqdm(dataloader)):
-        labels = inputs['label']
-        inputs = inputs['img']
-        if isinstance(inputs, list):
-            inputs = inputs[0]
-        with torch.no_grad():
-            inputs, labels = inputs.cuda(), labels.cuda()
-            E_outputs = model.forward_normal_no_prompts(inputs)  ## for MedCLIP
-            Z1_outputs = model_t1(E_outputs)
-            Z2_outputs = model_t2(Z1_outputs)
-            Y_outputs = logit_scale * Z2_outputs.cuda() @ TE
-            # Y_outputs = model.classifier(Z) instead of classifier we use the above expression
-            Y_pl = F.softmax(Y_outputs)
-            # outputs = model.eval_clip(inputs)  ## for CLIP
-            # outputs = model.test_txt_clas(inputs) # to evaluate the performance of text classifier alone
-            _, predicted = Y_pl.max(1)
-            losses.append(criterion(Y_pl, labels).cpu())
-            one_hot.append(predicted.eq(labels).cpu())
-        acc1 = one_hot[-1].sum().item() / len(labels)
-        top1.update(acc1, len(labels))
-        batch_time.update(time.time() - end)
-        end = time.time()
-    model.eval()
-
-    return top1.avg * 100
-
-def evaluation_image_text(dataloader,model, model_t, logit_scale, TE):
-    model.eval()
-    model_t.eval()
-    batch_time = AverageMeter('Time', ':6.3f')
-    top1 = AverageMeter('Acc@1', ':6.2f')
-    one_hot = []
-    losses= []
-    criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
-    end = time.time()
-    # test accuracy
-    for i, inputs in enumerate(tqdm(dataloader)):
-        labels = inputs['label']
-        inputs = inputs['img']
-        if isinstance(inputs, list):
-            inputs = inputs[0]
-        with torch.no_grad():
-            inputs, labels = inputs.cuda(), labels.cuda()
-            E_outputs = model.forward_normal_no_prompts(inputs)  ## for MedCLIP
-            Z_outputs = model_t(E_outputs)
-            W_outputs = model.dim_reduction(TE)
-            Y_outputs = logit_scale * Z_outputs.cuda() @ W_outputs
-            # Y_outputs = model.classifier(Z) instead of classifier we use the above expression
-            Y_pl = F.softmax(Y_outputs)
-            # outputs = model.eval_clip(inputs)  ## for CLIP
-            # outputs = model.test_txt_clas(inputs) # to evaluate the performance of text classifier alone
-            _, predicted = Y_pl.max(1)
-            losses.append(criterion(Y_pl, labels).cpu())
-            one_hot.append(predicted.eq(labels).cpu())
-        acc1 = one_hot[-1].sum().item() / len(labels)
-        top1.update(acc1, len(labels))
-        batch_time.update(time.time() - end)
-        end = time.time()
-    model.eval()
-
-    return top1.avg * 100
-
 def evaluation_no_prompts(dataloader,model, pickle_z=None):
     model.eval()
     batch_time = AverageMeter('Time', ':6.3f')
@@ -381,99 +302,6 @@ def evaluation_no_prompts(dataloader,model, pickle_z=None):
     model.eval()
 
     return top1.avg * 100
-
-
-def evaluation_train_one_batch(dataloader,model, model_t):
-    model.eval()
-    model_t.eval()
-    batch_time = AverageMeter('Time', ':6.3f')
-    top1 = AverageMeter('Acc@1', ':6.2f')
-    one_hot = []
-    losses= []
-    criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
-    end = time.time()
-
-    # test accuracy
-    for i, inputs in enumerate(tqdm(dataloader)):
-        labels = inputs['label']
-        inputs = inputs['img']
-        if isinstance(inputs, list):
-            inputs = inputs[0]
-        with torch.no_grad():
-            inputs, labels = inputs.cuda(), labels.cuda()
-            E_outputs = model.forward_normal_no_prompts(inputs)  ## for MedCLIP
-            Z_outputs = model_t(E_outputs)
-            Y_outputs = model.classifier(Z_outputs)
-            Y_pl = F.softmax(Y_outputs)
-            # outputs = model.eval_clip(inputs)  ## for CLIP
-            # outputs = model.test_txt_clas(inputs) # to evaluate the performance of text classifier alone
-            _, predicted = Y_pl.max(1)
-            losses.append(criterion(Y_pl, labels).cpu())
-            one_hot.append(predicted.eq(labels).cpu())
-        acc1 = one_hot[-1].sum().item() / len(labels)
-        top1.update(acc1, len(labels))
-        batch_time.update(time.time() - end)
-        end = time.time()
-        break
-    model.eval()
-
-    return top1.avg * 100
-
-
-def evalauation_mlhc_mlp(teloader, model, model_f, model_t, label_map):
-    model.eval()
-    model_f.eval()
-    model_t.eval()
-    batch_time = AverageMeter('Time', ':6.3f')
-    top1 = AverageMeter('Acc@1', ':6.2f')
-    one_hot = []
-    losses = []
-    criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
-    end = time.time()
-    for i, inputs in enumerate(tqdm(teloader)):
-        labels = inputs['label']
-        inputs = inputs['img']
-        if isinstance(inputs, list):
-            inputs = inputs[0]
-        with torch.no_grad():
-            inputs, labels = inputs.cuda(), labels.cuda()
-            outputs = model.forward_mlhc_mlp(inputs, model_t)  ## for MedCLIP
-            _, predicted = outputs.max(1)
-            losses.append(criterion(outputs, labels).cpu())
-            one_hot.append(predicted.eq(labels).cpu())
-        acc1 = one_hot[-1].sum().item() / len(labels)
-        top1.update(acc1, len(labels))
-        batch_time.update(time.time() - end)
-        end = time.time()
-    model.eval()
-    return top1.avg * 100
-
-def evaluate_dumb(teloader, trloader, valoader):
-    sum_1 = 0
-    sum_all = 0
-    for i, inputs in enumerate(tqdm(teloader)):
-        labels = inputs['label']
-        # inputs = inputs['img']
-        sum_1+= labels.sum()
-        sum_all+= len(labels)
-
-    for i, inputs in enumerate(tqdm(trloader)):
-        labels = inputs['label']
-        # inputs = inputs['img']
-        sum_1+= labels.sum()
-        sum_all+= len(labels)
-
-    for i, inputs in enumerate(tqdm(valoader)):
-        labels = inputs['label']
-        # inputs = inputs['img']
-        sum_1+= labels.sum()
-        sum_all+= len(labels)
-
-        # print(labels.sum(), len(labels))
-    print("============\n\n")
-    print(sum_1, sum_all, sum_1*1.0/sum_all)
-    print("============\n\n")
-    exit()
 
 text_cls_epochs = {
     'DescribableTextures': 400, # 5.5k for txt_cls
