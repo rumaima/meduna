@@ -46,19 +46,97 @@ cd meduna
 conda create -n meduna_env python=3.9
 conda activate meduna_env
 pip install -r meduna_requirements.txt
+```
 
-Dataset Registration (For New Datasets)
+---
 
-If you're using a new dataset that is not already supported, you must register it first:
+## 2️⃣ 📦 Dataset Registration (For New Datasets)
 
-Add your dataset config YAML to the configs/ folder
+If you're using a **new dataset** that is not already supported, you must **register it first**:
 
-Define:
+* Add your dataset config `.yaml` to the `configs/` folder
+* Define the following in your config:
 
-dataset_path
+  * `dataset_path`
+  * `class_names`
+  * `image_loader` format (e.g., grayscale, RGB, resize, transforms)
+* You may also need to update dataset-specific logic in:
 
-class_names
+  * `data/`
+  * `scripts/`
 
-image_loader format
+---
 
-You may need to update dataset-specific logic in data/ or scripts/
+## 3️⃣ 🚀 Run Training + Evaluation
+
+Once your dataset is registered, run the following script:
+
+```bash
+bash scripts/LaFTer.sh <dataset_name>
+```
+
+Replace `<dataset_name>` with one of the following:
+
+* `montgomery_cxr`
+* `shenzhen_cxr`
+* `guangzhou_pneumonia`
+* `idrid`
+* `isic2018`
+* *or your custom dataset name*
+
+**Example:**
+
+```bash
+bash scripts/LaFTer.sh idrid
+```
+
+This will:
+
+* Load the corresponding YAML config
+* Train using **MedUnA** (unsupervised, label-free)
+* Save checkpoints and evaluation metrics
+
+---
+
+## 🧠 Method Summary
+
+![MedUnA Framework](assets/meduna_framework.png)
+
+* 📝 **Text encoder** processes LLM-generated class descriptions into embeddings
+* 🖼️ **Visual encoder** (from MedCLIP) processes medical images
+* 🧹 A lightweight **adapter** aligns visual embeddings to the text space
+* 🧲 **Contrastive entropy loss** encourages better class separation and modality alignment
+* ❌ Training is done **without any labels or paired supervision**
+
+---
+
+## 📁 Repository Structure
+
+```
+meduna/
+├── configs/            # YAML configs for datasets
+├── scripts/            # Training/evaluation bash scripts
+├── models/             # Model components (adapter, projector)
+├── data/               # Dataset loaders
+├── utils/              # Helper functions
+├── assets/             # Diagrams & figures
+├── README.md           # You're here!
+```
+
+---
+
+## 📚 Citation
+Please cite our work if you find it useful :)
+
+```bibtex
+@misc{rahman2024meduna,
+  title={Can Language-Guided Unsupervised Adaptation Improve Medical Image Classification Using Unpaired Images and Texts?},
+  author={Umaima Rahman and Raza Imam and Mohammad Yaqub and Boulbaba Ben Amor and Dwarikanath Mahapatra},
+  year={2024},
+  url={https://github.com/rumaima/meduna}
+}
+```
+
+---
+
+
