@@ -1,4 +1,5 @@
 # MedUnA 🩺  
+🏥 Accepted at ISBI 2025
 **Language-Guided Unsupervised Adaptation of Vision-Language Models for Medical Image Classification**
 
 > Can Language-Guided Unsupervised Adaptation Improve Medical Image Classification Using Unpaired Images and Texts?  
