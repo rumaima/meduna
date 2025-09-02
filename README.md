@@ -1,11 +1,13 @@
 # MedUnA 🩺  
 🏥 Accepted at ISBI 2025
+> [[📄 Paper]](https://arxiv.org/abs/2409.02729)
+
 **Language-Guided Unsupervised Adaptation of Vision-Language Models for Medical Image Classification**
 
 > Can Language-Guided Unsupervised Adaptation Improve Medical Image Classification Using Unpaired Images and Texts?  
 > **Umaima Rahman**, Raza Imam, Mohammad Yaqub, Boulbaba Ben Amor, Dwarikanath Mahapatra  
 > **Affiliations**: MBZUAI · Inception · Monash University  
-> [[📄 Paper]](https://arxiv.org/abs/2409.02729)
+
 
 ---
 
